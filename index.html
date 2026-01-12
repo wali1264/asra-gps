@@ -1,0 +1,88 @@
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Asra GPS - سیستم مدیریت هوشمند ردیاب</title>
+    
+    <!-- PWA Root-Relative Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Asra GPS">
+    
+    <!-- Explicit Root Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    
+    <!-- Microsoft Meta -->
+    <meta name="msapplication-TileColor" content="#0f172a">
+    <meta name="msapplication-TileImage" content="/icon-192.png">
+    <meta name="application-name" content="Asra GPS">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #f8fafc;
+            margin: 0;
+            padding: 0;
+            overscroll-behavior-y: contain;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        input::placeholder { color: #cbd5e1; font-weight: normal; }
+
+        @media print {
+            #root { display: none !important; visibility: hidden !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            @page { margin: 0 !important; padding: 0 !important; }
+            .print-root-layer { display: block !important; visibility: visible !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; }
+            .print-page-unit { display: block !important; position: relative !important; margin: 0 auto !important; overflow: hidden !important; page-break-after: always !important; box-sizing: border-box !important; background-color: white !important; }
+            .print-field { position: absolute !important; display: flex !important; align-items: center !important; line-height: 1.2 !important; pointer-events: none !important; white-space: nowrap !important; }
+            .print-text-content { width: 100% !important; font-family: 'Vazirmatn', sans-serif !important; font-weight: 900 !important; color: black !important; }
+        }
+        .print-root-layer { display: none; }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        // Use absolute root path for service worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .then(reg => {
+                    console.log('PWA: ServiceWorker Registered at root scope');
+                })
+                .catch(err => {
+                    console.error('PWA: ServiceWorker Registration failed:', err);
+                });
+            });
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            window.deferredPrompt = e;
+        });
+    </script>
+    <script type="module" src="index.tsx"></script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
