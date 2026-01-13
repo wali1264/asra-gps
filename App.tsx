@@ -82,6 +82,49 @@ const Toast = () => {
   );
 };
 
+// --- Security Gate for Design Section ---
+const DesignGate = ({ onUnlock, onCancel }: { onUnlock: () => void, onCancel: () => void }) => {
+  const [pass, setPass] = useState('');
+  const [isError, setIsError] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pass === 'wali') {
+      onUnlock();
+    } else {
+      setIsError(true);
+      setTimeout(() => setIsError(false), 500);
+      setPass('');
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center p-12 text-center animate-in fade-in zoom-in-95 duration-500">
+      <div className="w-24 h-24 bg-blue-600 text-white rounded-[32px] flex items-center justify-center mb-8 shadow-2xl shadow-blue-100 ring-8 ring-blue-50">
+        <Lock size={40} />
+      </div>
+      <h2 className="text-2xl font-black text-slate-800 mb-2">دسترسی محدود شده</h2>
+      <p className="text-slate-400 font-medium mb-10 max-w-xs">برای ورود به بخش مدیریت بوم طراحی، لطفاً رمز عبور را وارد نمایید.</p>
+      
+      <form onSubmit={handleSubmit} className={`w-full max-w-sm space-y-4 ${isError ? 'animate-bounce' : ''}`}>
+        <div className="relative">
+          <Key className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+          <input 
+            type="password" 
+            placeholder="رمز عبور طراحی..." 
+            autoFocus
+            className={`w-full pr-14 pl-6 py-5 bg-white border-2 rounded-[24px] outline-none transition-all font-bold text-center text-xl tracking-[0.5em] ${isError ? 'border-red-500 bg-red-50' : 'border-slate-100 focus:border-blue-500 shadow-sm'}`}
+            value={pass}
+            onChange={e => setPass(e.target.value)}
+          />
+        </div>
+        <button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black text-lg shadow-xl hover:bg-black transition-all">تایید هویت</button>
+        <button type="button" onClick={onCancel} className="text-slate-400 font-bold text-sm hover:text-slate-600">انصراف</button>
+      </form>
+    </div>
+  );
+};
+
 // --- Accounting Logic ---
 const AccountingPanel = ({ perms }: { perms: string[] }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -152,8 +195,13 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
   };
 
   const totals = useMemo(() => {
-    const charges = transactions.filter(t => t.type === 'charge').reduce((acc, t) => acc + t.amount, 0);
-    const payments = transactions.filter(t => t.type === 'payment').reduce((acc, t) => acc + t.amount, 0);
+    const charges = transactions
+      .filter(t => t.type === 'charge')
+      .reduce((acc, t) => acc + Number(t.amount || 0), 0);
+    const payments = transactions
+      .filter(t => t.type === 'payment')
+      .reduce((acc, t) => acc + Number(t.amount || 0), 0);
+    
     return { charges, payments, balance: charges - payments };
   }, [transactions]);
 
@@ -169,7 +217,7 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
         </div>
         <div className="relative group">
             <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={24} />
-            <input type="text" placeholder="نام یا شماره تذکره مشتری را وارد کنید..." className="w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-bold focus:border-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <input type="text" placeholder="نام یا شماره پلاک مشتری را وارد کنید..." className="w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-bold focus:border-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         {searchTerm && (
           <div className="mt-8 bg-white rounded-[40px] border border-slate-100 shadow-2xl overflow-hidden animate-in zoom-in-95">
@@ -179,7 +227,7 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
                    <div key={c.id} onClick={() => setSelectedClient(c)} className="p-8 flex items-center justify-between hover:bg-blue-50 cursor-pointer transition-all group">
                      <div className="flex items-center gap-6">
                         <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-xl font-black text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">{c.name[0]}</div>
-                        <div><h4 className="font-black text-lg text-slate-800">{c.name}</h4><p className="text-xs text-slate-400 font-bold">تذکره: {c.tazkira}</p></div>
+                        <div><h4 className="font-black text-lg text-slate-800">{c.name}</h4><p className="text-xs text-slate-400 font-bold">پلاک: {c.tazkira}</p></div>
                      </div>
                      <ChevronLeft className="text-slate-300" />
                    </div>
@@ -193,7 +241,7 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto py-10 px-6 h-full flex flex-col gap-8 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar">
+    <div className="max-w-7xl mx-auto py-10 px-6 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar h-full">
       {/* Header Info */}
       <div className="flex flex-col md:flex-row items-center justify-between bg-white p-8 rounded-[48px] shadow-sm border border-slate-100 gap-6">
          <div className="flex items-center gap-6">
@@ -210,7 +258,7 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
          <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
             <div className="flex items-center gap-4 mb-4"><div className="p-3 bg-red-50 text-red-500 rounded-2xl"><TrendingDown size={24}/></div><span className="text-xs font-black text-slate-400 uppercase">کل بدهی‌ها</span></div>
             <p className="text-3xl font-black text-slate-800">{totals.charges.toLocaleString()} <span className="text-sm opacity-30">AFN</span></p>
@@ -219,27 +267,33 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
             <div className="flex items-center gap-4 mb-4"><div className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl"><TrendingUp size={24}/></div><span className="text-xs font-black text-slate-400 uppercase">کل پرداختی‌ها</span></div>
             <p className="text-3xl font-black text-slate-800">{totals.payments.toLocaleString()} <span className="text-sm opacity-30">AFN</span></p>
          </div>
-         <div className={`p-8 rounded-[40px] border shadow-lg ${totals.balance > 0 ? 'bg-red-600 border-red-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>
+         <div className={`p-8 rounded-[40px] border shadow-lg transition-colors duration-500 ${totals.balance > 0 ? 'bg-red-600 border-red-500 text-white shadow-red-100' : totals.balance < 0 ? 'bg-blue-600 border-blue-500 text-white shadow-blue-100' : 'bg-slate-800 border-slate-700 text-white'}`}>
             <div className="flex items-center gap-4 mb-4"><div className="p-3 bg-white/20 rounded-2xl"><Calculator size={24}/></div><span className="text-xs font-black uppercase opacity-60">تراز نهایی (مانده)</span></div>
-            <p className="text-3xl font-black">{Math.abs(totals.balance).toLocaleString()} <span className="text-sm opacity-60">AFN</span></p>
-            <p className="text-[10px] font-black mt-2 opacity-80 uppercase tracking-widest">{totals.balance > 0 ? 'بدهکار به ما' : totals.balance < 0 ? 'طلبکار از ما' : 'تسویه شده'}</p>
+            <p className="text-3xl font-black">
+              {totals.balance < 0 ? '-' : totals.balance > 0 ? '+' : ''}
+              {Math.abs(totals.balance).toLocaleString()} 
+              <span className="text-sm opacity-60 mr-2">AFN</span>
+            </p>
+            <p className="text-[10px] font-black mt-2 opacity-80 uppercase tracking-widest">
+              {totals.balance > 0 ? 'بدهکار به ما' : totals.balance < 0 ? 'طلبکار (اضافه پرداخت)' : 'حساب تسویه شده'}
+            </p>
          </div>
       </div>
 
-      {/* Ledger Table - Modern Excel Style */}
-      <div className="bg-white rounded-[48px] border border-slate-100 shadow-sm overflow-hidden flex-1 flex flex-col mb-10">
+      {/* Ledger Table - Unlocked Height for Vertical Growth */}
+      <div className="bg-white rounded-[48px] border border-slate-100 shadow-sm overflow-hidden flex flex-col mb-10 mt-8 h-auto">
          <div className="grid grid-cols-2 border-b">
             <div className="p-6 bg-red-50/30 border-l flex items-center justify-between"><h4 className="font-black text-red-700 flex items-center gap-2"><ArrowDownCircle size={18}/> لیست بدهی‌ها (مخارج)</h4></div>
             <div className="p-6 bg-emerald-50/30 flex items-center justify-between"><h4 className="font-black text-emerald-700 flex items-center gap-2"><ArrowUpCircle size={18}/> لیست پرداختی‌ها (درآمد)</h4></div>
          </div>
-         <div className="flex-1 overflow-y-auto grid grid-cols-2 divide-x divide-x-reverse custom-scrollbar">
-            {/* Charges Column */}
-            <div className="flex flex-col">
+         <div className="grid grid-cols-2 divide-x divide-x-reverse h-auto">
+            {/* Charges Column - Using flex-1 to stretch to maximum height of the pair */}
+            <div className="flex flex-col flex-1 h-full">
                {transactions.filter(t => t.type === 'charge').map(t => (
                  <div key={t.id} className="p-6 border-b hover:bg-slate-50 transition-all flex items-center justify-between group">
                     <div className="flex items-center gap-4">
                        <div className="text-right">
-                          <p className="font-black text-slate-800 text-lg">{t.amount.toLocaleString()} <span className="text-[10px] opacity-30">AFN</span></p>
+                          <p className="font-black text-slate-800 text-lg">{Number(t.amount).toLocaleString()} <span className="text-[10px] opacity-30">AFN</span></p>
                           <p className="text-[11px] font-bold text-slate-400">{t.description || 'بدون توضیح'}</p>
                        </div>
                     </div>
@@ -253,14 +307,15 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
                  </div>
                ))}
                {transactions.filter(t => t.type === 'charge').length === 0 && <div className="p-20 text-center text-slate-300 font-bold text-sm">هیچ بدهی ثبت نشده است</div>}
+               <div className="flex-1 bg-slate-50/20" /> {/* Placeholder to maintain visual balance */}
             </div>
-            {/* Payments Column */}
-            <div className="flex flex-col">
+            {/* Payments Column - Using flex-1 to stretch to maximum height of the pair */}
+            <div className="flex flex-col flex-1 h-full">
                {transactions.filter(t => t.type === 'payment').map(t => (
                  <div key={t.id} className="p-6 border-b hover:bg-slate-50 transition-all flex items-center justify-between group">
                     <div className="flex items-center gap-4">
                        <div className="text-right">
-                          <p className="font-black text-slate-800 text-lg">{t.amount.toLocaleString()} <span className="text-[10px] opacity-30">AFN</span></p>
+                          <p className="font-black text-slate-800 text-lg">{Number(t.amount).toLocaleString()} <span className="text-[10px] opacity-30">AFN</span></p>
                           <p className="text-[11px] font-bold text-slate-400">{t.description || 'بدون توضیح'}</p>
                        </div>
                     </div>
@@ -274,6 +329,7 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
                  </div>
                ))}
                {transactions.filter(t => t.type === 'payment').length === 0 && <div className="p-20 text-center text-slate-300 font-bold text-sm">هیچ پرداختی ثبت نشده است</div>}
+               <div className="flex-1 bg-slate-50/20" /> {/* Placeholder to maintain visual balance */}
             </div>
          </div>
       </div>
@@ -805,7 +861,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
         <div className="flex gap-5 items-center px-4">
           <div className="relative flex-1 group">
             <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={24} />
-            <input disabled={!perms.includes('workspace_search')} type="text" placeholder={perms.includes('workspace_search') ? "جستجوی نام یا تذکره مشتری..." : "شما دسترسی جستجو ندارید"} className={`w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-medium ${!perms.includes('workspace_search') ? 'opacity-50 grayscale cursor-not-allowed' : 'focus:border-blue-500 focus:shadow-[0_20px_50px_rgba(59,130,246,0.1)]'}`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <input disabled={!perms.includes('workspace_search')} type="text" placeholder={perms.includes('workspace_search') ? "جستجوی نام یا شماره پلاک مشتری..." : "شما دسترسی جستجو ندارید"} className={`w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-medium ${!perms.includes('workspace_search') ? 'opacity-50 grayscale cursor-not-allowed' : 'focus:border-blue-500 focus:shadow-[0_20px_50px_rgba(59,130,246,0.1)]'}`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
           {perms.includes('workspace_create') && (
             <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white p-6 rounded-[32px] shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-105 transition-all flex items-center gap-3 group">
@@ -828,7 +884,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
                         <div className="flex gap-4 text-sm font-medium text-slate-400">
                            <span>پدر: {client.father_name || client.fatherName}</span>
                            <span className="opacity-30">|</span>
-                           <span>تذکره: {client.tazkira}</span>
+                           <span>پلاک: {client.tazkira}</span>
                         </div>
                       </div>
                     </div>
@@ -859,7 +915,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-black text-slate-400 mr-2 uppercase">شماره تذکره (ID)</label>
+                  <label className="text-xs font-black text-slate-400 mr-2 uppercase">شماره پلاک</label>
                   <input name="tazkira" type="text" className="w-full p-5 bg-slate-50 rounded-[24px] outline-none font-bold focus:bg-white focus:ring-2 ring-blue-100 transition-all" placeholder="..." required />
                 </div>
                 <div className="space-y-2">
@@ -954,7 +1010,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
                    <div className="flex items-center gap-4"><div className="p-3 bg-white rounded-2xl shadow-sm text-slate-400"><User size={20}/></div><div><p className="text-[10px] font-black text-slate-400 uppercase">نام پدر</p><p className="font-bold text-slate-800 text-lg">{selectedClient.father_name || selectedClient.fatherName}</p></div></div>
                 </div>
                 <div className="bg-slate-50 p-6 rounded-[32px] flex items-center justify-between">
-                   <div className="flex items-center gap-4"><div className="p-3 bg-white rounded-2xl shadow-sm text-slate-400"><CreditCard size={20}/></div><div><p className="text-[10px] font-black text-slate-400 uppercase">شماره تذکره</p><p className="font-bold text-slate-800 text-lg">{selectedClient.tazkira}</p></div></div>
+                   <div className="flex items-center gap-4"><div className="p-3 bg-white rounded-2xl shadow-sm text-slate-400"><CreditCard size={20}/></div><div><p className="text-[10px] font-black text-slate-400 uppercase">شماره پلاک</p><p className="font-bold text-slate-800 text-lg">{selectedClient.tazkira}</p></div></div>
                 </div>
                 <div className="bg-slate-50 p-6 rounded-[32px] flex items-center justify-between">
                    <div className="flex items-center gap-4"><div className="p-3 bg-white rounded-2xl shadow-sm text-slate-400"><Phone size={20}/></div><div><p className="text-[10px] font-black text-slate-400 uppercase">شماره تماس</p><p className="font-bold text-slate-800 text-lg">{selectedClient.phone || '---'}</p></div></div>
@@ -1383,6 +1439,8 @@ const SettingsPanel = ({ template, setTemplate, userPermissions }: { template: C
   const [mainTab, setMainTab] = useState<'users' | 'boom' | 'backup'>(() => { if (userPermissions.includes('settings_boom')) return 'boom'; if (userPermissions.includes('settings_users')) return 'users'; return 'backup'; });
   const [activeSubTab, setActiveSubTab] = useState<'design' | 'fields'>('design');
   const [activePage, setActivePage] = useState(1);
+  const [isDesignUnlocked, setIsDesignUnlocked] = useState(false);
+
   return (
     <div className="flex flex-col h-[calc(100vh-40px)] animate-in fade-in duration-500 no-print">
       <div className="flex items-center justify-center gap-4 py-6 bg-white border-b border-slate-100 no-print">
@@ -1391,7 +1449,15 @@ const SettingsPanel = ({ template, setTemplate, userPermissions }: { template: C
          {userPermissions.includes('settings_backup') && <button onClick={() => setMainTab('backup')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'backup' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Database size={18}/> پشتیبان‌گیری و داده‌ها</button>}
       </div>
       <div className="flex-1 overflow-hidden no-print">
-        {mainTab === 'boom' && <div className="h-full"><DesktopSettings template={template} setTemplate={setTemplate} activePageNum={activePage} activeSubTab={activeSubTab} setActiveSubTab={setActiveSubTab} onPageChange={setActivePage} /></div>}
+        {mainTab === 'boom' && (
+          <div className="h-full">
+            {isDesignUnlocked ? (
+              <DesktopSettings template={template} setTemplate={setTemplate} activePageNum={activePage} activeSubTab={activeSubTab} setActiveSubTab={setActiveSubTab} onPageChange={setActivePage} />
+            ) : (
+              <DesignGate onUnlock={() => setIsDesignUnlocked(true)} onCancel={() => setMainTab('users')} />
+            )}
+          </div>
+        )}
         {mainTab === 'users' && <UsersManager />}
         {mainTab === 'backup' && <BackupManager />}
       </div>
