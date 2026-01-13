@@ -18,6 +18,8 @@ export interface ContractField {
   fontSize: number;
   rotation: number;
   alignment: TextAlignment;
+  isDropdown?: boolean;
+  options?: string[];
 }
 
 export interface ContractPage {

@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Layout, FileText, Settings, Archive, User, Search, Printer, Plus, Save, Move, RotateCw, Upload, Trash2, AlignLeft, AlignCenter, AlignRight, Grid, List, Layers, PlusCircle, ChevronDown, Files, UserPlus, X, ChevronLeft, CheckCircle2, Type, Maximize2, Bell, Pencil, ShieldCheck, Database, Download, FileJson, Key, Check, Lock, LogOut, UserCheck, Shield, Eye, EyeOff, Repeat, Phone, CreditCard, UserCircle } from 'lucide-react';
+import { Layout, FileText, Settings, Archive, User, Search, Printer, Plus, Save, Move, RotateCw, Upload, Trash2, AlignLeft, AlignCenter, AlignRight, Grid, List, Layers, PlusCircle, ChevronDown, Files, UserPlus, X, ChevronLeft, CheckCircle2, Type, Maximize2, Bell, Pencil, ShieldCheck, Database, Download, FileJson, Key, Check, Lock, LogOut, UserCheck, Shield, Eye, EyeOff, Repeat, Phone, CreditCard, UserCircle, ZoomIn, ZoomOut, ChevronUp, Info, BookMarked, Copy, Wallet, ArrowUpCircle, ArrowDownCircle, Calculator, TrendingUp, TrendingDown, Clock } from 'lucide-react';
 import { PaperSize, ContractField, ContractTemplate, TextAlignment, ContractPage, ClientProfile } from './types';
 import { INITIAL_FIELDS } from './constants';
 import ReactDOM from 'react-dom';
@@ -19,7 +19,7 @@ const initDB = (): Promise<IDBDatabase> => {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => resolve(undefined as any);
   });
 };
 
@@ -37,9 +37,7 @@ const cacheImage = async (url: string): Promise<string> => {
 
     if (cached) return URL.createObjectURL(cached);
 
-    // If not cached, fetch and store
-    // Use 'no-cors' only if necessary, but here we expect Supabase to have proper CORS
-    const response = await fetch(url, { mode: 'cors' });
+    const response = await fetch(url, { mode: 'cors', cache: 'no-cache' });
     const blob = await response.blob();
     const writeTx = db.transaction(STORE_NAME, 'readwrite');
     writeTx.objectStore(STORE_NAME).put(blob, url);
@@ -84,6 +82,234 @@ const Toast = () => {
   );
 };
 
+// --- Accounting Logic ---
+const AccountingPanel = ({ perms }: { perms: string[] }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [clients, setClients] = useState<ClientProfile[]>([]);
+  const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
+  const [entryType, setEntryType] = useState<'charge' | 'payment'>('charge');
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
+
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  const fetchClients = async () => {
+    const { data } = await supabase.from('clients').select('*').order('name');
+    if (data) setClients(data);
+  };
+
+  const fetchTransactions = async (clientId: string) => {
+    const { data } = await supabase.from('transactions').select('*').eq('client_id', clientId).order('created_at', { ascending: false });
+    if (data) setTransactions(data);
+  };
+
+  useEffect(() => {
+    if (selectedClient) fetchTransactions(selectedClient.id);
+  }, [selectedClient]);
+
+  const filteredClients = useMemo(() => {
+    const lower = searchTerm.toLowerCase().trim();
+    if (!lower) return [];
+    return clients.filter(c => c.name.toLowerCase().includes(lower) || c.tazkira.toLowerCase().includes(lower));
+  }, [clients, searchTerm]);
+
+  const handleSaveEntry = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedClient) return;
+    const data = new FormData(e.currentTarget);
+    const amount = parseInt(data.get('amount') as string);
+    const description = data.get('description') as string;
+
+    const entry = {
+      client_id: selectedClient.id,
+      amount,
+      description,
+      type: editingTransaction ? editingTransaction.type : entryType
+    };
+
+    if (editingTransaction) {
+      const { error } = await supabase.from('transactions').update(entry).eq('id', editingTransaction.id);
+      if (!error) showToast('رکورد مالی بروزرسانی شد');
+    } else {
+      const { error } = await supabase.from('transactions').insert([entry]);
+      if (!error) showToast('تراکنش مالی ثبت گردید');
+    }
+
+    setIsEntryModalOpen(false);
+    setEditingTransaction(null);
+    fetchTransactions(selectedClient.id);
+  };
+
+  const deleteTransaction = async (id: string) => {
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (!error) {
+      showToast('رکورد حذف شد');
+      if (selectedClient) fetchTransactions(selectedClient.id);
+    }
+  };
+
+  const totals = useMemo(() => {
+    const charges = transactions.filter(t => t.type === 'charge').reduce((acc, t) => acc + t.amount, 0);
+    const payments = transactions.filter(t => t.type === 'payment').reduce((acc, t) => acc + t.amount, 0);
+    return { charges, payments, balance: charges - payments };
+  }, [transactions]);
+
+  if (!selectedClient) {
+    return (
+      <div className="max-w-4xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-4">
+        <div className="text-center mb-12 pt-10">
+          <div className="w-32 h-32 bg-blue-50 rounded-[40px] flex items-center justify-center mx-auto mb-6 shadow-xl border border-blue-100 text-blue-600">
+             <Wallet size={60} />
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">حسابداری و امور مالی</h2>
+          <p className="text-slate-500 font-medium text-lg opacity-80">مدیریت دستی بدهی‌ها و پرداختی‌های مشتریان</p>
+        </div>
+        <div className="relative group">
+            <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={24} />
+            <input type="text" placeholder="نام یا شماره تذکره مشتری را وارد کنید..." className="w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-bold focus:border-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        </div>
+        {searchTerm && (
+          <div className="mt-8 bg-white rounded-[40px] border border-slate-100 shadow-2xl overflow-hidden animate-in zoom-in-95">
+             {filteredClients.length > 0 ? (
+               <div className="divide-y divide-slate-50">
+                 {filteredClients.map(c => (
+                   <div key={c.id} onClick={() => setSelectedClient(c)} className="p-8 flex items-center justify-between hover:bg-blue-50 cursor-pointer transition-all group">
+                     <div className="flex items-center gap-6">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-xl font-black text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">{c.name[0]}</div>
+                        <div><h4 className="font-black text-lg text-slate-800">{c.name}</h4><p className="text-xs text-slate-400 font-bold">تذکره: {c.tazkira}</p></div>
+                     </div>
+                     <ChevronLeft className="text-slate-300" />
+                   </div>
+                 ))}
+               </div>
+             ) : ( <div className="p-14 text-center text-slate-400 font-bold">مشتری با این مشخصات یافت نشد</div> )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto py-10 px-6 h-full flex flex-col gap-8 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar">
+      {/* Header Info */}
+      <div className="flex flex-col md:flex-row items-center justify-between bg-white p-8 rounded-[48px] shadow-sm border border-slate-100 gap-6">
+         <div className="flex items-center gap-6">
+            <button onClick={() => setSelectedClient(null)} className="p-4 bg-slate-100 text-slate-500 rounded-2xl hover:bg-slate-200 transition-all"><X size={24}/></button>
+            <div>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">پرونده مالی</p>
+               <h3 className="text-2xl font-black text-slate-800">{selectedClient.name}</h3>
+            </div>
+         </div>
+         <div className="flex gap-4">
+            <button onClick={() => { setEntryType('charge'); setIsEntryModalOpen(true); }} className="bg-red-500 text-white px-8 py-5 rounded-[28px] font-black text-sm flex items-center gap-3 shadow-lg shadow-red-100 hover:scale-105 transition-all"><TrendingDown size={20}/> ثبت بدهی (طلب)</button>
+            <button onClick={() => { setEntryType('payment'); setIsEntryModalOpen(true); }} className="bg-emerald-500 text-white px-8 py-5 rounded-[28px] font-black text-sm flex items-center gap-3 shadow-lg shadow-emerald-100 hover:scale-105 transition-all"><TrendingUp size={20}/> ثبت پرداختی (قسط)</button>
+         </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-4 mb-4"><div className="p-3 bg-red-50 text-red-500 rounded-2xl"><TrendingDown size={24}/></div><span className="text-xs font-black text-slate-400 uppercase">کل بدهی‌ها</span></div>
+            <p className="text-3xl font-black text-slate-800">{totals.charges.toLocaleString()} <span className="text-sm opacity-30">AFN</span></p>
+         </div>
+         <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-4 mb-4"><div className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl"><TrendingUp size={24}/></div><span className="text-xs font-black text-slate-400 uppercase">کل پرداختی‌ها</span></div>
+            <p className="text-3xl font-black text-slate-800">{totals.payments.toLocaleString()} <span className="text-sm opacity-30">AFN</span></p>
+         </div>
+         <div className={`p-8 rounded-[40px] border shadow-lg ${totals.balance > 0 ? 'bg-red-600 border-red-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>
+            <div className="flex items-center gap-4 mb-4"><div className="p-3 bg-white/20 rounded-2xl"><Calculator size={24}/></div><span className="text-xs font-black uppercase opacity-60">تراز نهایی (مانده)</span></div>
+            <p className="text-3xl font-black">{Math.abs(totals.balance).toLocaleString()} <span className="text-sm opacity-60">AFN</span></p>
+            <p className="text-[10px] font-black mt-2 opacity-80 uppercase tracking-widest">{totals.balance > 0 ? 'بدهکار به ما' : totals.balance < 0 ? 'طلبکار از ما' : 'تسویه شده'}</p>
+         </div>
+      </div>
+
+      {/* Ledger Table - Modern Excel Style */}
+      <div className="bg-white rounded-[48px] border border-slate-100 shadow-sm overflow-hidden flex-1 flex flex-col mb-10">
+         <div className="grid grid-cols-2 border-b">
+            <div className="p-6 bg-red-50/30 border-l flex items-center justify-between"><h4 className="font-black text-red-700 flex items-center gap-2"><ArrowDownCircle size={18}/> لیست بدهی‌ها (مخارج)</h4></div>
+            <div className="p-6 bg-emerald-50/30 flex items-center justify-between"><h4 className="font-black text-emerald-700 flex items-center gap-2"><ArrowUpCircle size={18}/> لیست پرداختی‌ها (درآمد)</h4></div>
+         </div>
+         <div className="flex-1 overflow-y-auto grid grid-cols-2 divide-x divide-x-reverse custom-scrollbar">
+            {/* Charges Column */}
+            <div className="flex flex-col">
+               {transactions.filter(t => t.type === 'charge').map(t => (
+                 <div key={t.id} className="p-6 border-b hover:bg-slate-50 transition-all flex items-center justify-between group">
+                    <div className="flex items-center gap-4">
+                       <div className="text-right">
+                          <p className="font-black text-slate-800 text-lg">{t.amount.toLocaleString()} <span className="text-[10px] opacity-30">AFN</span></p>
+                          <p className="text-[11px] font-bold text-slate-400">{t.description || 'بدون توضیح'}</p>
+                       </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                       <p className="text-[10px] font-black text-slate-300">{new Date(t.created_at).toLocaleDateString('fa-IR')}</p>
+                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button onClick={() => { setEditingTransaction(t); setIsEntryModalOpen(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil size={14}/></button>
+                          <button onClick={() => deleteTransaction(t.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button>
+                       </div>
+                    </div>
+                 </div>
+               ))}
+               {transactions.filter(t => t.type === 'charge').length === 0 && <div className="p-20 text-center text-slate-300 font-bold text-sm">هیچ بدهی ثبت نشده است</div>}
+            </div>
+            {/* Payments Column */}
+            <div className="flex flex-col">
+               {transactions.filter(t => t.type === 'payment').map(t => (
+                 <div key={t.id} className="p-6 border-b hover:bg-slate-50 transition-all flex items-center justify-between group">
+                    <div className="flex items-center gap-4">
+                       <div className="text-right">
+                          <p className="font-black text-slate-800 text-lg">{t.amount.toLocaleString()} <span className="text-[10px] opacity-30">AFN</span></p>
+                          <p className="text-[11px] font-bold text-slate-400">{t.description || 'بدون توضیح'}</p>
+                       </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                       <p className="text-[10px] font-black text-slate-300">{new Date(t.created_at).toLocaleDateString('fa-IR')}</p>
+                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button onClick={() => { setEditingTransaction(t); setIsEntryModalOpen(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil size={14}/></button>
+                          <button onClick={() => deleteTransaction(t.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button>
+                       </div>
+                    </div>
+                 </div>
+               ))}
+               {transactions.filter(t => t.type === 'payment').length === 0 && <div className="p-20 text-center text-slate-300 font-bold text-sm">هیچ پرداختی ثبت نشده است</div>}
+            </div>
+         </div>
+      </div>
+
+      {/* Entry Modal */}
+      {isEntryModalOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => { setIsEntryModalOpen(false); setEditingTransaction(null); }} />
+          <form onSubmit={handleSaveEntry} className="bg-white w-full max-w-lg rounded-[48px] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 border border-white">
+            <div className={`p-10 text-white flex justify-between items-center ${editingTransaction ? 'bg-blue-600' : entryType === 'charge' ? 'bg-red-600' : 'bg-emerald-600'}`}>
+               <h3 className="text-2xl font-black flex items-center gap-3">
+                  {editingTransaction ? <Pencil size={24}/> : entryType === 'charge' ? <TrendingDown size={24}/> : <TrendingUp size={24}/>}
+                  {editingTransaction ? 'ویرایش رکورد مالی' : entryType === 'charge' ? 'ثبت بدهی جدید' : 'ثبت دریافتی جدید'}
+               </h3>
+               <button type="button" onClick={() => { setIsEntryModalOpen(false); setEditingTransaction(null); }} className="p-2 hover:bg-white/20 rounded-full transition-all"><X size={20}/></button>
+            </div>
+            <div className="p-12 space-y-6">
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">مبلغ تراکنش (AFN)</label>
+                  <input name="amount" type="number" defaultValue={editingTransaction?.amount} className="w-full p-5 bg-slate-50 rounded-[24px] outline-none font-black text-2xl focus:bg-white focus:ring-4 ring-blue-50 transition-all border-2 border-transparent focus:border-blue-500" required autoFocus />
+               </div>
+               <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">بابت / توضیحات</label>
+                  <textarea name="description" defaultValue={editingTransaction?.description} className="w-full p-5 bg-slate-50 rounded-[24px] outline-none font-bold text-lg focus:bg-white transition-all border-2 border-transparent focus:border-blue-500 h-32 resize-none" placeholder="مثلاً: قسط ماه دوم، هزینه نصب و..."></textarea>
+               </div>
+               <button type="submit" className={`w-full text-white py-6 rounded-[32px] font-black text-xl shadow-xl transition-all ${editingTransaction ? 'bg-blue-600 shadow-blue-100' : entryType === 'charge' ? 'bg-red-600 shadow-red-100' : 'bg-emerald-600 shadow-emerald-100'}`}>
+                  {editingTransaction ? 'ثبت تغییرات' : 'تایید و ثبت نهایی'}
+               </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Print Renderer Component ---
 const PrintLayout = ({ template, formData }: { template: ContractTemplate, formData: Record<string, string> }) => {
   const [localBgs, setLocalBgs] = useState<Record<number, string>>({});
@@ -123,7 +349,8 @@ const PrintLayout = ({ template, formData }: { template: ContractTemplate, formD
               height: isMasterA4 ? '297mm' : '210mm',
               backgroundImage: page.showBackgroundInPrint && localBgs[page.pageNumber] ? `url(${localBgs[page.pageNumber]})` : 'none',
               backgroundSize: '100% 100%',
-              backgroundRepeat: 'no-repeat'
+              backgroundRepeat: 'no-repeat',
+              imageRendering: 'crisp-edges'
             }}
           >
             {activeFields.map((field) => (
@@ -157,6 +384,7 @@ const Sidebar = ({ activeTab, setActiveTab, userPermissions, onLogout }: { activ
   const menuItems = [
     { id: 'workspace', icon: Layout, label: 'میز کار', perm: 'workspace' },
     { id: 'archive', icon: Archive, label: 'بایگانی', perm: 'archive' },
+    { id: 'accounting', icon: Wallet, label: 'امور مالی', perm: 'accounting' },
     { id: 'settings', icon: Settings, label: 'تنظیمات', perm: 'settings' }
   ].filter(item => userPermissions.includes(item.perm));
 
@@ -238,22 +466,268 @@ const LoginForm = ({ onLogin }: { onLogin: (user: any) => void }) => {
   );
 };
 
+// --- Custom Popover Select for Dropdowns ---
+const CustomSelect = ({ field, value, onSelect, zoom, onClose }: { field: ContractField, value: string, onSelect: (val: string) => void, zoom: number, onClose: () => void }) => {
+  const options = field.options || [];
+  return (
+    <div 
+      className="absolute z-[100] bg-white border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-right"
+      style={{ 
+        width: `${field.width * zoom}px`,
+        top: '100%',
+        marginTop: '4px',
+        maxHeight: '200px',
+        overflowY: 'auto'
+      }}
+    >
+      {options.map((opt, i) => (
+        <button
+          key={i}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(opt);
+            onClose();
+          }}
+          className={`w-full p-3 text-sm font-bold transition-all text-right border-b border-slate-50 last:border-0 hover:bg-blue-50 ${value === opt ? 'bg-blue-100 text-blue-700' : 'text-slate-700'}`}
+          style={{ fontSize: `${field.fontSize * zoom}px` }}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// --- Visual Workspace Component ---
+const VisualCanvasPage = ({ 
+  page, 
+  formData, 
+  setFormData, 
+  zoom, 
+  activeFieldKey, 
+  setActiveFieldKey 
+}: { 
+  page: ContractPage, 
+  formData: Record<string, string>, 
+  setFormData: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+  zoom: number,
+  activeFieldKey: string | null,
+  setActiveFieldKey: (key: string | null) => void
+}) => {
+  const [localBg, setLocalBg] = useState<string>('');
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (page.bgImage) {
+      cacheImage(page.bgImage).then(url => {
+        setLocalBg(url);
+      });
+    }
+  }, [page.bgImage]);
+
+  useEffect(() => {
+    const activeFields = (page.fields || []).filter(f => f.isActive && f.isDropdown && f.options && f.options.length > 0);
+    let updated = false;
+    const newFormData = { ...formData };
+    activeFields.forEach(f => {
+      if (!newFormData[f.key]) {
+        newFormData[f.key] = f.options![0];
+        updated = true;
+      }
+    });
+    if (updated) setFormData(newFormData);
+  }, [page.fields]);
+
+  const activeFields = (page.fields || []).filter(f => f.isActive);
+
+  const handleKeyDown = (e: React.KeyboardEvent, currentField: ContractField) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const allActiveFields = page.fields.filter(f => f.isActive);
+      const currentIndex = allActiveFields.findIndex(f => f.key === currentField.key);
+      if (currentIndex < allActiveFields.length - 1) {
+        const nextField = allActiveFields[currentIndex + 1];
+        setActiveFieldKey(nextField.key);
+        if (nextField.isDropdown) {
+          setOpenDropdown(nextField.key);
+        } else {
+          setOpenDropdown(null);
+          setTimeout(() => {
+             const nextInput = document.querySelector(`input[data-field-key="${nextField.key}"]`) as HTMLInputElement;
+             nextInput?.focus();
+          }, 10);
+        }
+      }
+    }
+  };
+
+  const isA4 = page.paperSize === PaperSize.A4;
+  const baseWidth = isA4 ? 595 : 420; 
+  const baseHeight = isA4 ? 842 : 595;
+
+  return (
+    <div 
+      className="relative mx-auto bg-white shadow-2xl border border-slate-200 transition-all duration-500 origin-top overflow-hidden"
+      style={{ 
+        width: `${baseWidth * zoom}px`, 
+        height: `${baseHeight * zoom}px`,
+        backgroundImage: localBg ? `url(${localBg})` : 'none',
+        backgroundSize: '100% 100%',
+        backgroundRepeat: 'no-repeat',
+        imageRendering: 'high-quality',
+        WebkitFontSmoothing: 'antialiased'
+      }}
+      onClick={() => {
+        setActiveFieldKey(null);
+        setOpenDropdown(null);
+      }}
+    >
+      {activeFields.map((field) => (
+        <div
+          key={field.id}
+          className={`absolute flex items-center transition-all duration-300 ${activeFieldKey === field.key ? 'z-50' : 'z-10'} cursor-pointer`}
+          style={{
+            left: `${field.x}%`,
+            top: `${field.y}%`,
+            width: `${field.width * zoom}px`,
+            height: `${(field.height || 30) * zoom}px`,
+            transform: `rotate(${field.rotation}deg)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveFieldKey(field.key);
+            if (field.isDropdown) setOpenDropdown(field.key);
+            else setOpenDropdown(null);
+          }}
+        >
+          <div className={`absolute -inset-[2px] border-2 transition-all duration-300 pointer-events-none ${
+            activeFieldKey === field.key 
+              ? 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] opacity-100' 
+              : 'border-transparent opacity-0'
+          }`} />
+          
+          {field.isDropdown ? (
+            <div 
+              className="w-full h-full flex items-center gap-1 overflow-hidden"
+              style={{
+                justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
+              }}
+            >
+               <span 
+                className="font-bold text-slate-800 whitespace-nowrap truncate"
+                style={{ 
+                  fontSize: `${field.fontSize * zoom}px`,
+                  textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
+                }}
+               >
+                 {formData[field.key] || (field.options?.[0] || '')}
+               </span>
+               <ChevronDown size={12 * zoom} className="text-slate-400 flex-shrink-0" />
+            </div>
+          ) : (
+            <input
+              data-field-key={field.key}
+              type="text"
+              value={formData[field.key] || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))}
+              onFocus={() => {
+                setActiveFieldKey(field.key);
+                setOpenDropdown(null);
+              }}
+              onKeyDown={(e) => handleKeyDown(e, field)}
+              className="w-full h-full bg-transparent border-none outline-none font-bold text-slate-800 p-0 m-0"
+              style={{
+                fontSize: `${field.fontSize * zoom}px`,
+                textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
+                lineHeight: 1,
+                boxSizing: 'border-box'
+              }}
+            />
+          )}
+
+          {openDropdown === field.key && field.isDropdown && (
+            <CustomSelect 
+              field={field} 
+              value={formData[field.key] || ''} 
+              onSelect={(val) => setFormData(p => ({ ...p, [field.key]: val }))}
+              zoom={zoom}
+              onClose={() => setOpenDropdown(null)}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormData }: { template: ContractTemplate, editData?: any, onEditCancel?: () => void, perms: string[], formData: Record<string, string>, setFormData: React.Dispatch<React.SetStateAction<Record<string, string>>> }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isClientDetailsOpen, setIsClientDetailsOpen] = useState(false);
   const [visiblePages, setVisiblePages] = useState<number[]>([1]);
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [zoom, setZoom] = useState(1.4); // Default higher zoom for better UX
+  const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchClients();
   }, []);
 
+  // Smart Auto-Zoom implementation
+  useEffect(() => {
+    if (selectedClient && workspaceRef.current) {
+        const calculateAutoZoom = () => {
+            const containerWidth = workspaceRef.current?.offsetWidth || 1000;
+            const targetWidth = containerWidth * 0.85; // Use 85% of available width
+            const isA4 = template.pages?.[0]?.paperSize === PaperSize.A4;
+            const baseWidth = isA4 ? 595 : 420;
+            const idealZoom = targetWidth / baseWidth;
+            setZoom(Math.min(2.0, Math.max(0.6, idealZoom)));
+        };
+        calculateAutoZoom();
+        window.addEventListener('resize', calculateAutoZoom);
+        return () => window.removeEventListener('resize', calculateAutoZoom);
+    }
+  }, [selectedClient, template.pages]);
+
   const fetchClients = async () => {
     const { data } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
     if (data) setClients(data);
   };
+
+  useEffect(() => {
+    if (selectedClient && !editData) {
+      const applyAutoFields = async () => {
+        const newFormData = { ...formData };
+        let hasChanges = false;
+        const today = new Date().toLocaleDateString('fa-IR');
+        const { count, error: countError } = await supabase.from('contracts').select('*', { count: 'exact', head: true });
+        const serialNum = countError ? '1' : ((count || 0) + 1).toString();
+
+        (template.pages || []).forEach(page => {
+          page.fields.forEach(field => {
+            if (field.isActive) {
+              const lowerKey = field.key.toLowerCase();
+              const lowerLabel = field.label.toLowerCase();
+              if (lowerKey.includes('date') || lowerLabel.includes('تاریخ')) {
+                if (!newFormData[field.key]) { newFormData[field.key] = today; hasChanges = true; }
+              }
+              if (lowerKey.includes('serial') || lowerLabel.includes('مسلسل') || lowerLabel.includes('شماره قرارداد')) {
+                if (!newFormData[field.key]) { newFormData[field.key] = serialNum; hasChanges = true; }
+              }
+            }
+          });
+        });
+        if (hasChanges) setFormData(newFormData);
+      };
+      applyAutoFields();
+    }
+  }, [selectedClient, editData, template.pages]);
 
   useEffect(() => {
     if (editData && clients.length > 0) {
@@ -280,54 +754,39 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
     e.preventDefault();
     if (!perms.includes('workspace_create')) { showToast('شما دسترسی ایجاد پرونده ندارید'); return; }
     const data = new FormData(e.currentTarget);
-    const newClient = { 
-      id: Date.now().toString(), 
-      name: data.get('name') as string, 
-      father_name: data.get('fatherName') as string, 
-      tazkira: data.get('tazkira') as string, 
-      phone: data.get('phone') as string 
-    };
+    const newClient = { id: Date.now().toString(), name: data.get('name') as string, father_name: data.get('fatherName') as string, tazkira: data.get('tazkira') as string, phone: data.get('phone') as string };
     if (!newClient.name || !newClient.tazkira) { showToast('لطفاً فیلدهای ضروری را پر کنید'); return; }
-    
     const { error } = await supabase.from('clients').insert([newClient]);
-    if (!error) {
-      await fetchClients();
-      setSelectedClient(newClient as any);
-      setIsModalOpen(false);
-      showToast('پرونده دیجیتال مشتری ایجاد شد');
-    }
+    if (!error) { await fetchClients(); setSelectedClient(newClient as any); setIsModalOpen(false); showToast('پرونده دیجیتال مشتری ایجاد شد'); }
   };
 
   const handleSaveContract = async (isExtension: boolean = false) => {
     if (!selectedClient) return;
     if (!perms.includes('workspace_create') && !editData) return;
-    if (editData && !perms.includes('archive_edit') && !isExtension) { showToast('دسترسی ویرایش قرارداد را ندارید'); return; }
-    
+    if (editData && !isExtension && !perms.includes('archive_edit')) { showToast('دسترسی ویرایش قرارداد را ندارید'); return; }
     if (editData && !isExtension) {
       const { error } = await supabase.from('contracts').update({ form_data: formData, timestamp: new Date().toISOString() }).eq('id', editData.id);
       if (!error) showToast('تغییرات قرارداد بروزرسانی شد');
     } else {
-      const newEntry = { 
-        id: Date.now().toString(), 
-        client_id: selectedClient.id, 
-        client_name: selectedClient.name, 
-        form_data: formData, 
-        timestamp: new Date().toISOString(), 
-        template_id: template.id, 
-        is_extended: isExtension 
-      };
+      const newEntry = { id: Date.now().toString(), client_id: selectedClient.id, client_name: selectedClient.name, form_data: formData, timestamp: new Date().toISOString(), template_id: template.id, is_extended: isExtension };
       const { error } = await supabase.from('contracts').insert([newEntry]);
       if (!error) showToast(isExtension ? 'قرارداد تمدید و به عنوان سند جدید ثبت شد' : 'قرارداد با موفقیت در بایگانی ثبت شد');
     }
     resetWorkspace();
   };
 
-  const handleEnter = (e: React.KeyboardEvent, currentKey: string) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const allKeys = (template.pages || []).flatMap(p => (p.fields || []).filter(f => f.isActive)).map(f => f.key);
-      const currentIndex = allKeys.indexOf(currentKey);
-      if (currentIndex < allKeys.length - 1) inputRefs.current[allKeys[currentIndex + 1]]?.focus();
+  const handleSaveAsPreset = () => {
+    localStorage.setItem('asra_gps_preset', JSON.stringify(formData));
+    showToast('اطلاعات فعلی به عنوان پیش‌نویس (قالب) ذخیره شد');
+  };
+
+  const handleLoadPreset = () => {
+    const saved = localStorage.getItem('asra_gps_preset');
+    if (saved) {
+        setFormData(JSON.parse(saved));
+        showToast('قالب پیش‌نویس فراخوانی شد');
+    } else {
+        showToast('هیچ پیش‌نویسی ذخیره نشده است');
     }
   };
 
@@ -335,7 +794,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
 
   if (!selectedClient) {
     return (
-      <div className="max-w-4xl mx-auto py-12 animate-in fade-in slide-in-from-bottom-4 no-print">
+      <div className="max-w-4xl mx-auto py-12 animate-in fade-in slide-in-from-bottom-4 no-print h-full overflow-y-auto custom-scrollbar">
         <div className="text-center mb-12 pt-10">
           <div className="w-40 h-40 bg-white rounded-[48px] flex items-center justify-center mx-auto mb-6 shadow-2xl p-4 border border-slate-50">
              <AsraLogo size={120} />
@@ -356,7 +815,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
           )}
         </div>
         {searchTerm && perms.includes('workspace_search') && (
-          <div className="mt-8 bg-white/80 backdrop-blur-xl rounded-[40px] border border-white/50 shadow-2xl overflow-hidden animate-in zoom-in-95 mx-4">
+          <div className="mt-8 bg-white/80 backdrop-blur-xl rounded-[40px] border border-white/50 shadow-2xl overflow-hidden animate-in zoom-in-95 mx-4 mb-20">
             <div className="p-5 bg-slate-50/50 border-b text-xs font-black text-slate-400 uppercase tracking-widest">نتایج یافت شده در بایگانی</div>
             {filteredClients.length > 0 ? (
               <div className="divide-y divide-slate-50">
@@ -417,85 +876,181 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
   }
 
   return (
-    <div className="w-full max-w-full mx-auto py-6 px-6 animate-in fade-in duration-500 flex flex-col h-full overflow-hidden no-print">
-      <div className="bg-white rounded-[28px] px-8 py-5 shadow-sm border border-slate-100 mb-6 flex items-center justify-between no-print hover:shadow-md transition-all group w-full">
-        <div className="flex-1 grid grid-cols-4 gap-8 items-center">
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><UserCircle size={20}/></div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">نام مشتری</span>
-                  <span className="text-2xl font-black text-slate-900 leading-none">{selectedClient.name}</span>
-                </div>
+    <div className="relative w-full h-full flex flex-col no-print bg-[#f8fafc]" ref={workspaceRef}>
+      {/* --- Unified Modern Toolbar (Glassmorphism) --- */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-fit max-w-[95%] no-print">
+        <div className="bg-white/80 backdrop-blur-2xl border border-white/50 px-2 py-2 rounded-[32px] shadow-[0_20px_40px_rgba(0,0,0,0.1)] flex items-center gap-1">
+          
+          {/* Client Profile */}
+          <button 
+            onClick={() => setIsClientDetailsOpen(true)}
+            className="flex items-center gap-3 pr-2 pl-4 py-1.5 rounded-full hover:bg-blue-50 transition-all group"
+          >
+            <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg group-active:scale-95 transition-transform">
+                <User size={18} />
             </div>
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-slate-50 text-slate-500 rounded-lg"><User size={20}/></div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">نام پدر</span>
-                  <span className="text-2xl font-black text-slate-900 leading-none">{selectedClient.father_name || selectedClient.fatherName}</span>
-                </div>
+            <div className="hidden md:flex flex-col text-right">
+                <span className="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">مشتری فعال</span>
+                <span className="text-xs font-black text-slate-700 leading-none">{selectedClient.name}</span>
             </div>
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-slate-50 text-slate-500 rounded-lg"><CreditCard size={20}/></div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">تذکره</span>
-                  <span className="text-2xl font-black text-slate-900 leading-none">{selectedClient.tazkira}</span>
-                </div>
-            </div>
-            <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><Phone size={20}/></div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">تماس</span>
-                  <span className="text-2xl font-black text-slate-900 leading-none">{selectedClient.phone || '---'}</span>
-                </div>
-            </div>
+          </button>
+
+          <div className="w-[1px] h-6 bg-slate-200 mx-2" />
+
+          {/* Zoom Controls */}
+          <div className="flex items-center bg-slate-100/50 p-1 rounded-full">
+             <button onClick={() => setZoom(z => Math.max(0.4, z - 0.1))} className="p-2 hover:bg-white hover:shadow-sm text-slate-500 rounded-full transition-all active:scale-90"><ZoomOut size={18}/></button>
+             <div className="px-3 text-[10px] font-black text-blue-600 w-12 text-center">{Math.round(zoom * 100)}%</div>
+             <button onClick={() => setZoom(z => Math.min(2.5, z + 0.1))} className="p-2 hover:bg-white hover:shadow-sm text-slate-500 rounded-full transition-all active:scale-90"><ZoomIn size={18}/></button>
+          </div>
+
+          <div className="w-[1px] h-6 bg-slate-200 mx-2" />
+
+          {/* Page Indicators */}
+          <div className="flex gap-1">
+            {[1, 2, 3].map(p => (
+                <button 
+                    key={p} 
+                    onClick={() => setVisiblePages(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-black transition-all ${visiblePages.includes(p) ? 'bg-slate-900 text-white shadow-lg' : 'bg-transparent text-slate-400 hover:bg-slate-50'}`}
+                >
+                    {p}
+                </button>
+            ))}
+          </div>
+
+          <div className="w-[1px] h-6 bg-slate-200 mx-2" />
+
+          {/* Quick Actions */}
+          <button 
+            onClick={handleLoadPreset}
+            title="فراخوانی قالب ذخیره شده"
+            className="w-10 h-10 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-full transition-all"
+          >
+            <BookMarked size={20} />
+          </button>
+
+          <button 
+            onClick={resetWorkspace}
+            className="w-10 h-10 flex items-center justify-center text-red-500 hover:bg-red-50 rounded-full transition-all"
+          >
+            <X size={20} />
+          </button>
         </div>
-        <button onClick={resetWorkspace} className="mr-6 p-3 rounded-xl hover:bg-red-50 text-slate-200 hover:text-red-500 transition-all flex-shrink-0 no-print"><X size={24}/></button>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-32 space-y-6 custom-scrollbar px-1 no-print">
-        {(template.pages || []).map((page) => {
-          const isPageOpen = visiblePages.includes(page.pageNumber);
-          const activeFields = (page.fields || []).filter(f => f.isActive);
-          if (activeFields.length === 0) return null;
-          return (
-            <div key={page.pageNumber} className={`bg-white rounded-[32px] border border-slate-100 transition-all w-full ${isPageOpen ? 'shadow-lg' : 'opacity-60 shadow-sm'}`}>
-              <div onClick={() => setVisiblePages(p => p.includes(page.pageNumber) ? p.filter(x => x !== page.pageNumber) : [...p, page.pageNumber])} className="p-6 flex items-center justify-between cursor-pointer group">
-                <h4 className="font-black text-xl text-slate-800 flex items-center gap-3">
-                  <div className={`w-2 h-8 rounded-full transition-all ${isPageOpen ? 'bg-blue-600' : 'bg-slate-200'}`} />
-                  برگ قرارداد شماره {page.pageNumber}
-                </h4>
-                <div className={`p-2 rounded-xl transition-all ${isPageOpen ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'}`}>
-                   <ChevronDown className={`transition-transform duration-500 ${isPageOpen ? 'rotate-180' : ''}`} />
+      {/* --- Client Details Modal --- */}
+      {isClientDetailsOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setIsClientDetailsOpen(false)} />
+          <div className="bg-white w-full max-w-lg rounded-[48px] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 border border-white">
+            <div className="p-10 text-center">
+              <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[32px] flex items-center justify-center mx-auto mb-6 shadow-sm"><UserCircle size={56} /></div>
+              <h3 className="text-3xl font-black text-slate-900 mb-1">{selectedClient.name}</h3>
+              <p className="text-slate-400 font-bold mb-10">شناسه پرونده: {selectedClient.id.slice(-6)}</p>
+              
+              <div className="grid grid-cols-1 gap-4 text-right">
+                <div className="bg-slate-50 p-6 rounded-[32px] flex items-center justify-between">
+                   <div className="flex items-center gap-4"><div className="p-3 bg-white rounded-2xl shadow-sm text-slate-400"><User size={20}/></div><div><p className="text-[10px] font-black text-slate-400 uppercase">نام پدر</p><p className="font-bold text-slate-800 text-lg">{selectedClient.father_name || selectedClient.fatherName}</p></div></div>
+                </div>
+                <div className="bg-slate-50 p-6 rounded-[32px] flex items-center justify-between">
+                   <div className="flex items-center gap-4"><div className="p-3 bg-white rounded-2xl shadow-sm text-slate-400"><CreditCard size={20}/></div><div><p className="text-[10px] font-black text-slate-400 uppercase">شماره تذکره</p><p className="font-bold text-slate-800 text-lg">{selectedClient.tazkira}</p></div></div>
+                </div>
+                <div className="bg-slate-50 p-6 rounded-[32px] flex items-center justify-between">
+                   <div className="flex items-center gap-4"><div className="p-3 bg-white rounded-2xl shadow-sm text-slate-400"><Phone size={20}/></div><div><p className="text-[10px] font-black text-slate-400 uppercase">شماره تماس</p><p className="font-bold text-slate-800 text-lg">{selectedClient.phone || '---'}</p></div></div>
                 </div>
               </div>
-              {isPageOpen && (
-                <div className="p-8 pt-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-6 animate-in slide-in-from-top-4 duration-300">
-                  {activeFields.map((field) => (
-                    <div key={field.id} className="flex flex-col gap-2">
-                      <label className="text-[13px] font-black text-slate-800 px-1 tracking-tight truncate">{field.label}</label>
-                      <input ref={el => inputRefs.current[field.key] = el} type="text" value={formData[field.key] || ''} onChange={(e) => setFormData({...formData, [field.key]: e.target.value})} onKeyDown={(e) => handleEnter(e, field.key)} placeholder="..." className="w-full px-5 py-4 bg-slate-50/50 border-2 border-transparent rounded-2xl outline-none focus:bg-white focus:border-blue-500/30 focus:shadow-sm transition-all font-bold text-lg text-slate-700 placeholder:text-slate-300" />
-                    </div>
-                  ))}
-                </div>
-              )}
+              
+              <button onClick={() => setIsClientDetailsOpen(false)} className="w-full mt-10 bg-slate-900 text-white py-6 rounded-[32px] font-black text-lg shadow-xl shadow-slate-200">بستن پنجره</button>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      )}
 
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-5xl px-4 no-print z-50">
-        <div className="bg-white/80 backdrop-blur-2xl border border-white/50 p-4 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-wrap gap-3 items-center justify-center">
-          <button onClick={() => handleSaveContract(false)} className="flex-1 min-w-[180px] bg-blue-600 text-white py-5 rounded-[24px] font-black text-lg shadow-xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3">
-            <Save size={24} /> {editData ? 'بروزرسانی سند' : 'ثبت نهایی قرارداد'}
-          </button>
-          {editData && (
-            <button onClick={() => handleSaveContract(true)} className="flex-1 min-w-[180px] bg-emerald-500 text-white py-5 rounded-[24px] font-black text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-600 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-3">
-              <Repeat size={24} /> تمدید قرارداد (ثبت جدید)
-            </button>
-          )}
-          <button onClick={() => window.print()} className="px-10 bg-slate-900 text-white py-5 rounded-[24px] font-black text-lg flex items-center justify-center gap-3 hover:bg-black hover:-translate-y-0.5 transition-all shadow-xl">
-            <Printer size={22}/> چاپ
-          </button>
+      {/* --- Main Workspace Area --- */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar pt-24 pb-40 px-6 no-print">
+        <div className="max-w-screen-2xl mx-auto flex flex-col items-center gap-10">
+          {(template.pages || []).map((page) => {
+            const isPageOpen = visiblePages.includes(page.pageNumber);
+            const hasImage = !!page.bgImage;
+            const activeFields = (page.fields || []).filter(f => f.isActive);
+            if (!hasImage && page.pageNumber > 1) return null;
+            if (!isPageOpen) return null;
+
+            return (
+              <div key={page.pageNumber} className="w-full flex flex-col items-center animate-in fade-in slide-in-from-bottom-8 duration-700">
+                <div className="flex justify-center w-full">
+                    {hasImage ? (
+                      <VisualCanvasPage 
+                          page={page} 
+                          formData={formData} 
+                          setFormData={setFormData} 
+                          zoom={zoom} 
+                          activeFieldKey={activeFieldKey}
+                          setActiveFieldKey={setActiveFieldKey}
+                      />
+                    ) : (
+                      <div className="bg-white p-12 rounded-[56px] shadow-2xl border border-slate-100 w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8 relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-[100px] opacity-40 -z-0" />
+                          {activeFields.map(f => (
+                            <div key={f.id} className="flex flex-col gap-2 relative z-10">
+                              <label className="text-[10px] font-black text-slate-400 uppercase mr-1 tracking-widest">{f.label}</label>
+                              <input 
+                                type="text" 
+                                value={formData[f.key] || ''} 
+                                onChange={(e) => setFormData({...formData, [f.key]: e.target.value})} 
+                                placeholder="..." 
+                                className="w-full px-6 py-5 bg-slate-50 rounded-[24px] outline-none font-bold text-lg focus:bg-white focus:ring-4 ring-blue-50 transition-all border-2 border-transparent focus:border-blue-200"
+                              />
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* --- Bottom Action Buttons (Flowing) --- */}
+          <div className="w-full max-w-4xl pt-10 pb-20 px-6 animate-in slide-in-from-bottom-10 delay-300">
+            <div className="bg-white/60 backdrop-blur-xl p-8 rounded-[48px] border border-white shadow-2xl flex flex-col gap-4">
+              
+              <div className="flex flex-col md:flex-row gap-4">
+                  <button 
+                    onClick={() => handleSaveContract(false)} 
+                    className="flex-[2] bg-blue-600 text-white py-7 rounded-[32px] font-black text-xl shadow-2xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"
+                  >
+                    <Save size={28} /> 
+                    {editData ? 'بروزرسانی تغییرات' : 'ثبت و آرشیو نهایی'}
+                  </button>
+                  
+                  <button 
+                    onClick={handleSaveAsPreset} 
+                    className="flex-1 bg-white border-2 border-slate-100 text-slate-700 py-7 rounded-[32px] font-black text-lg hover:bg-slate-50 hover:-translate-y-1 transition-all flex items-center justify-center gap-3 active:scale-95"
+                  >
+                    <Copy size={24} className="text-blue-500" /> ذخیره به عنوان قالب
+                  </button>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-4">
+                  {editData && (
+                    <button 
+                      onClick={() => handleSaveContract(true)} 
+                      className="flex-1 bg-emerald-500 text-white py-6 rounded-[28px] font-black text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-600 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"
+                    >
+                      <Repeat size={24} /> تمدید قرارداد
+                    </button>
+                  )}
+                  
+                  <button 
+                    onClick={() => window.print()} 
+                    className="flex-1 bg-slate-900 text-white py-6 rounded-[28px] font-black text-lg flex items-center justify-center gap-4 hover:bg-black hover:-translate-y-1 transition-all shadow-xl active:scale-95"
+                  >
+                    <Printer size={24}/> چاپ سند
+                  </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -509,7 +1064,7 @@ const UsersManager = () => {
   const [editingUser, setEditingUser] = useState<any>(null);
   
   const permissionsList = [
-    { id: 'workspace', label: 'دسترسی به میز کار', parent: null }, { id: 'workspace_create', label: 'ایجاد پرونده جدید', parent: 'workspace' }, { id: 'workspace_search', label: 'جستجوی مشتریان', parent: 'workspace' }, { id: 'archive', label: 'مشاهده بایگانی', parent: null }, { id: 'archive_print', label: 'چاپ در بایگانی', parent: 'archive' }, { id: 'archive_edit', label: 'ویرایش در بایگانی', parent: 'archive' }, { id: 'archive_delete', label: 'حذف سوابق بایگانی', parent: 'archive' }, { id: 'settings', label: 'دسترسی به تنظیمات', parent: null }, { id: 'settings_boom', label: 'مدیریت بوم طراحی', parent: 'settings' }, { id: 'settings_users', label: 'مدیریت کاربران و نقش‌ها', parent: 'settings' }, { id: 'settings_backup', label: 'پشتیبان‌گیری داده‌ها', parent: 'settings' }
+    { id: 'workspace', label: 'دسترسی به میز کار', parent: null }, { id: 'workspace_create', label: 'ایجاد پرونده جدید', parent: 'workspace' }, { id: 'workspace_search', label: 'جستجوی مشتریان', parent: 'workspace' }, { id: 'archive', label: 'مشاهده بایگانی', parent: null }, { id: 'archive_print', label: 'چاپ در بایگانی', parent: 'archive' }, { id: 'archive_edit', label: 'ویرایش در بایگانی', parent: 'archive' }, { id: 'archive_delete', label: 'حذف سوابق بایگانی', parent: 'archive' }, { id: 'accounting', label: 'دسترسی به امور مالی', parent: null }, { id: 'settings', label: 'دسترسی به تنظیمات', parent: null }, { id: 'settings_boom', label: 'مدیریت بوم طراحی', parent: 'settings' }, { id: 'settings_users', label: 'مدیریت کاربران و نقش‌ها', parent: 'settings' }, { id: 'settings_backup', label: 'پشتیبان‌گیری داده‌ها', parent: 'settings' }
   ];
 
   useEffect(() => {
@@ -645,17 +1200,7 @@ const BackupManager = () => {
     const { data: a } = await supabase.from('contracts').select('*');
     const { data: u } = await supabase.from('users').select('*');
     const { data: r } = await supabase.from('roles').select('*');
-    
-    const data = { 
-      settings: t, 
-      clients: c, 
-      contracts: a, 
-      users: u, 
-      roles: r, 
-      version: '2.0.0', 
-      exportDate: new Date().toISOString() 
-    };
-    
+    const data = { settings: t, clients: c, contracts: a, users: u, roles: r, version: '2.0.0', exportDate: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const aLink = document.createElement('a');
@@ -673,21 +1218,16 @@ const BackupManager = () => {
       try {
         const data = JSON.parse(event.target?.result as string);
         showToast('در حال پاکسازی و جایگزینی داده‌ها...');
-        
-        // Clear all tables
         await supabase.from('contracts').delete().neq('id', '0');
         await supabase.from('clients').delete().neq('id', '0');
         await supabase.from('users').delete().neq('username', 'admin');
         await supabase.from('roles').delete().neq('id', 'admin_role');
         await supabase.from('settings').delete().neq('key', '0');
-
-        // Restore
         if (data.roles) await supabase.from('roles').upsert(data.roles);
         if (data.users) await supabase.from('users').upsert(data.users);
         if (data.clients) await supabase.from('clients').upsert(data.clients);
         if (data.contracts) await supabase.from('contracts').upsert(data.contracts);
         if (data.settings) await supabase.from('settings').upsert(data.settings);
-
         showToast('سیستم با موفقیت بازیابی شد. بارگذاری مجدد...');
         setTimeout(() => window.location.reload(), 2000);
       } catch (err) { showToast('خطا در خواندن فایل پشتیبان'); }
@@ -710,18 +1250,15 @@ const BackupManager = () => {
 
 const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, setActiveSubTab, onPageChange }: { template: ContractTemplate, setTemplate: (t: any) => void, activePageNum: number, activeSubTab: 'design' | 'fields', setActiveSubTab: (s: 'design' | 'fields') => void, onPageChange: (p: number) => void }) => {
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-  const [newField, setNewField] = useState({ label: '', fontSize: 14, width: 150, alignment: 'R' as TextAlignment });
+  const [newField, setNewField] = useState({ label: '', fontSize: 14, width: 150, alignment: 'R' as TextAlignment, isDropdown: false, optionsStr: '' });
   const [canvasBg, setCanvasBg] = useState<string>('');
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // SAFETY: Ensure template and pages exist
   const pages = template.pages || [];
   const activePage = pages.find(p => p.pageNumber === activePageNum) || pages[0] || { pageNumber: activePageNum, fields: [], paperSize: PaperSize.A4, showBackgroundInPrint: true };
   const fields = activePage.fields || [];
   const selectedField = fields.find(f => f.id === selectedFieldId);
 
-  // Load local cached background for canvas
   useEffect(() => {
     const loadBg = async () => {
       if (activePage.bgImage) {
@@ -735,54 +1272,11 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
   }, [activePage.bgImage, activePageNum]);
 
   const updatePage = (updates: Partial<ContractPage>) => setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, ...updates } : p) });
-  
-  const handleSaveTemplate = async () => { 
-    const { error } = await supabase.from('settings').upsert([{ key: 'contract_template', value: template }]);
-    if (!error) showToast('قالب طراحی در پایگاه داده تثبیت شد'); 
-  };
-
+  const handleSaveTemplate = async () => { const { error } = await supabase.from('settings').upsert([{ key: 'contract_template', value: template }]); if (!error) showToast('قالب طراحی در پایگاه داده تثبیت شد'); };
   const updateField = (id: string, updates: Partial<ContractField>) => setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: fields.map(f => f.id === id ? { ...f, ...updates } : f) } : p) });
-  const handleAddField = () => { if (!newField.label) { showToast('نام المان نمی‌تواند خالی باشد'); return; } const id = Date.now().toString(); const field: ContractField = { id, label: newField.label, key: `f_${id}`, isActive: true, x: 40, y: 40, width: newField.width, height: 30, fontSize: newField.fontSize, rotation: 0, alignment: newField.alignment }; setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: [...fields, field] } : p) }); setNewField({ label: '', fontSize: 14, width: 150, alignment: 'R' }); showToast('المان جدید به بوم اضافه شد'); };
+  const handleAddField = () => { if (!newField.label) { showToast('نام المان نمی‌تواند خالی باشد'); return; } const id = Date.now().toString(); const options = newField.isDropdown ? newField.optionsStr.split(/[,،\n]/).map(o => o.trim()).filter(Boolean) : undefined; const field: ContractField = { id, label: newField.label, key: `f_${id}`, isActive: true, x: 40, y: 40, width: newField.width, height: 30, fontSize: 14, rotation: 0, alignment: newField.alignment, isDropdown: newField.isDropdown, options: options }; setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: [...fields, field] } : p) }); setNewField({ label: '', fontSize: 14, width: 150, alignment: 'R', isDropdown: false, optionsStr: '' }); showToast('المان جدید به بوم اضافه شد'); };
   const removeField = (id: string) => { setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: fields.filter(f => f.id !== id) } : p) }); showToast('المان حذف شد'); };
-  
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { 
-    const file = e.target.files?.[0]; 
-    if (file) { 
-      // 1. Delete old file if exists
-      if (activePage.bgImage) {
-        try {
-          const oldPath = activePage.bgImage.split('/').pop();
-          if (oldPath) {
-            await supabase.storage.from('letterheads').remove([`headers/${oldPath}`]);
-          }
-        } catch (e) { console.error('Cleanup failed:', e); }
-      }
-
-      // 2. Upload new file
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `headers/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage.from('letterheads').upload(filePath, file);
-      
-      if (!uploadError) {
-        const { data: { publicUrl } } = supabase.storage.from('letterheads').getPublicUrl(filePath);
-        
-        // 3. Instant local preview
-        const localUrl = URL.createObjectURL(file);
-        setCanvasBg(localUrl);
-        
-        // 4. Update state and cache in background
-        updatePage({ bgImage: publicUrl });
-        const db = await initDB();
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).put(file, publicUrl);
-        
-        showToast('تصویر سربرگ جدید جایگزین و کش شد');
-      }
-    } 
-  };
-
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { if (activePage.bgImage) { try { const oldPath = activePage.bgImage.split('/').pop(); if (oldPath) await supabase.storage.from('letterheads').remove([`headers/${oldPath}`]); } catch (e) { console.error('Cleanup failed:', e); } } const fileExt = file.name.split('.').pop(); const fileName = `${Math.random()}.${fileExt}`; const filePath = `headers/${fileName}`; const { error: uploadError } = await supabase.storage.from('letterheads').upload(filePath, file); if (!uploadError) { const { data: { publicUrl } } = supabase.storage.from('letterheads').getPublicUrl(filePath); const localUrl = URL.createObjectURL(file); setCanvasBg(localUrl); updatePage({ bgImage: publicUrl }); const db = await initDB(); const tx = db.transaction(STORE_NAME, 'readwrite'); tx.objectStore(STORE_NAME).put(file, publicUrl); showToast('تصویر سربرگ جدید جایگزین و کش شد'); } } };
   const handleDrag = (e: React.MouseEvent, id: string) => { if (!canvasRef.current) return; const canvasRect = canvasRef.current.getBoundingClientRect(); setSelectedFieldId(id); const onMouseMove = (m: MouseEvent) => { const x = ((m.clientX - canvasRect.left) / canvasRect.width) * 100; const y = ((m.clientY - canvasRect.top) / canvasRect.height) * 100; updateField(id, { x: Math.max(0, Math.min(98, x)), y: Math.max(0, Math.min(98, y)) }); }; const onMouseUp = () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); }; document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp); };
 
   return (
@@ -825,6 +1319,12 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
               {selectedField && (
                 <div className="bg-blue-50/50 rounded-[28px] p-6 border border-blue-100 animate-in slide-in-from-right-4 duration-500 shadow-inner">
                   <h4 className="text-xs font-black text-blue-900 mb-5 flex items-center gap-2"><Type size={14} /> ویرایش: {selectedField.label}</h4>
+                  {selectedField.isDropdown && (
+                    <div className="mb-4 space-y-2">
+                      <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest block">گزینه‌های لیست (با ویرگول جدا کنید)</label>
+                      <textarea className="w-full bg-white border-none shadow-sm rounded-xl p-3 font-bold text-xs text-blue-700 outline-none h-20 resize-none" value={selectedField.options?.join(', ') || ''} onChange={(e) => { const opts = e.target.value.split(/[,،\n]/).map(o => o.trim()).filter(Boolean); updateField(selectedField.id, { options: opts }); }} />
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3 mb-6">
                     <div className="space-y-1"><label className="text-[9px] font-black text-blue-400 block text-center uppercase tracking-widest">سایز</label><input type="number" value={selectedField.fontSize} onChange={e => updateField(selectedField.id, { fontSize: Number(e.target.value) })} className="w-full bg-white border-none shadow-sm rounded-xl p-3 text-center font-black text-sm text-blue-700 outline-none" /></div>
                     <div className="space-y-1"><label className="text-[9px] font-black text-blue-400 block text-center uppercase tracking-widest">عرض</label><input type="number" value={selectedField.width} onChange={e => updateField(selectedField.id, { width: Number(e.target.value) })} className="w-full bg-white border-none shadow-sm rounded-xl p-3 text-center font-black text-sm text-blue-700 outline-none" /></div>
@@ -843,7 +1343,12 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
             <div className="h-full flex flex-col gap-6">
               <div className="bg-blue-50/50 p-6 rounded-[32px] border border-blue-100">
                 <h3 className="text-xs font-black text-blue-900 mb-4 flex items-center gap-2"><PlusCircle size={14} /> تعریف المان</h3>
-                <div className="space-y-4"><input type="text" value={newField.label} placeholder="عنوان فیلد..." onChange={e => setNewField({...newField, label: e.target.value})} className="w-full p-3.5 bg-white border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-xs" /><button onClick={handleAddField} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xs shadow-lg shadow-blue-100">افزودن به برگه</button></div>
+                <div className="space-y-4">
+                  <input type="text" value={newField.label} placeholder="عنوان فیلد..." onChange={e => setNewField({...newField, label: e.target.value})} className="w-full p-3.5 bg-white border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-xs" />
+                  <div className="flex items-center gap-3 px-1"><button type="button" onClick={() => setNewField({...newField, isDropdown: !newField.isDropdown})} className={`w-6 h-6 rounded flex items-center justify-center border-2 transition-all ${newField.isDropdown ? 'bg-blue-600 border-blue-600' : 'border-slate-200 bg-white'}`}>{newField.isDropdown && <Check size={12} className="text-white" />}</button><span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">فیلد انتخابی (آبشاری)</span></div>
+                  {newField.isDropdown && ( <div className="animate-in slide-in-from-top-2 duration-300"><textarea value={newField.optionsStr} placeholder="گزینه‌ها را با ویرگول جدا کنید..." onChange={e => setNewField({...newField, optionsStr: e.target.value})} className="w-full p-3.5 bg-white border-none rounded-2xl outline-none font-bold text-[10px] h-20 shadow-inner" /></div> )}
+                  <button onClick={handleAddField} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xs shadow-lg shadow-blue-100">افزودن به برگه</button>
+                </div>
               </div>
               <div className="space-y-3">{fields.map(f => <div key={f.id} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center gap-3"><span className="text-xs font-bold text-slate-700 flex-1">{f.label}</span><div className="flex gap-1"><button onClick={() => updateField(f.id, { isActive: !f.isActive })} className={`p-1.5 rounded transition-all ${f.isActive ? 'text-emerald-500 bg-emerald-50' : 'text-slate-300 bg-slate-50'}`}><Check size={14}/></button><button onClick={() => removeField(f.id)} className="p-1.5 hover:bg-red-50 rounded text-red-400"><Trash2 size={14}/></button></div></div>)}</div>
             </div>
@@ -856,11 +1361,14 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
           </div>
         </div>
         <div className="flex-1 bg-slate-200/30 p-8 overflow-auto flex items-start justify-center custom-scrollbar no-print">
-          <div ref={canvasRef} className="bg-white shadow-2xl relative border border-slate-200 transition-all origin-top no-print" style={{ width: activePage.paperSize === PaperSize.A4 ? '595px' : '420px', height: activePage.paperSize === PaperSize.A4 ? '842px' : '595px', backgroundImage: canvasBg ? `url(${canvasBg})` : 'none', backgroundSize: '100% 100%' }}>
+          <div ref={canvasRef} className="bg-white shadow-2xl relative border border-slate-200 transition-all origin-top no-print" style={{ width: activePage.paperSize === PaperSize.A4 ? '595px' : '420px', height: activePage.paperSize === PaperSize.A4 ? '842px' : '595px', backgroundImage: canvasBg ? `url(${canvasBg})` : 'none', backgroundSize: '100% 100%', imageRendering: 'high-quality' }}>
             {fields.filter(f => f.isActive).map(f => (
               <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none group/field ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
                 <div className={`absolute -inset-2 border-2 rounded-lg transition-all ${selectedFieldId === f.id ? 'border-blue-500 bg-blue-500/5 shadow-md' : 'border-transparent'}`} />
-                <span className={`relative font-black tracking-tight w-full leading-tight break-words hyphens-auto ${selectedFieldId === f.id ? 'text-blue-700' : 'text-slate-800 opacity-60'}`} style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>{f.label}</span>
+                <span className={`relative font-black tracking-tight w-full leading-tight break-words hyphens-auto ${selectedFieldId === f.id ? 'text-blue-700' : 'text-slate-800 opacity-60'}`} style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+                  {f.label}
+                  {f.isDropdown && <ChevronDown size={8} className="inline mr-1 opacity-40" />}
+                </span>
               </div>
             ))}
             {!canvasBg && <div className="absolute inset-0 flex flex-col items-center justify-center opacity-5 grayscale pointer-events-none"><Maximize2 size={60} /><span className="font-black text-xl mt-4">Canvas Ready</span></div>}
@@ -893,30 +1401,15 @@ const SettingsPanel = ({ template, setTemplate, userPermissions }: { template: C
 
 const ArchivePanel = ({ onEdit, perms }: { onEdit: (contract: any) => void, perms: string[] }) => {
   const [contracts, setContracts] = useState<any[]>([]);
-
-  useEffect(() => {
-    fetchContracts();
-  }, []);
-
-  const fetchContracts = async () => {
-    const { data } = await supabase.from('contracts').select('*').order('timestamp', { ascending: false });
-    if (data) setContracts(data);
-  };
-
-  const handleDelete = async (id: string) => { 
-    if (!perms.includes('archive_delete')) return; 
-    const { error } = await supabase.from('contracts').delete().eq('id', id);
-    if (!error) {
-      fetchContracts();
-      showToast('قرارداد از بایگانی حذف شد'); 
-    }
-  };
+  useEffect(() => { fetchContracts(); }, []);
+  const fetchContracts = async () => { const { data } = await supabase.from('contracts').select('*').order('timestamp', { ascending: false }); if (data) setContracts(data); };
+  const handleDelete = async (id: string) => { if (!perms.includes('archive_delete')) return; const { error } = await supabase.from('contracts').delete().eq('id', id); if (!error) { fetchContracts(); showToast('قرارداد از بایگانی حذف شد'); } };
 
   return (
-    <div className="max-w-5xl mx-auto py-12 animate-in fade-in zoom-in-95 duration-700 no-print">
+    <div className="max-w-5xl mx-auto py-12 animate-in fade-in zoom-in-95 duration-700 no-print h-full overflow-y-auto custom-scrollbar">
       <div className="flex justify-between items-center mb-10 px-4"><div><h2 className="text-3xl font-black text-slate-800 tracking-tight">بایگانی اسناد صادر شده</h2></div><div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 px-6"><Search size={18} className="text-slate-300" /><input type="text" placeholder="جستجوی سریع..." className="outline-none bg-transparent text-sm font-bold w-48" /></div></div>
       {contracts.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4 pb-20">
           {contracts.map(contract => (
             <div key={contract.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 hover:shadow-xl transition-all group relative">
                {contract.is_extended && <div className="absolute top-4 left-4 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black z-10">تمدید شده</div>}
@@ -936,89 +1429,32 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('workspace');
   const [editingContract, setEditingContract] = useState<any>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
-  
-  const DEFAULT_TEMPLATE: ContractTemplate = { 
-    id: 'default', 
-    pages: [ 
-      { pageNumber: 1, paperSize: PaperSize.A4, fields: INITIAL_FIELDS, showBackgroundInPrint: true }, 
-      { pageNumber: 2, paperSize: PaperSize.A4, fields: [], showBackgroundInPrint: true }, 
-      { pageNumber: 3, paperSize: PaperSize.A4, fields: [], showBackgroundInPrint: true } 
-    ]
-  };
-
+  const DEFAULT_TEMPLATE: ContractTemplate = { id: 'default', pages: [ { pageNumber: 1, paperSize: PaperSize.A4, fields: INITIAL_FIELDS, showBackgroundInPrint: true }, { pageNumber: 2, paperSize: PaperSize.A4, fields: [], showBackgroundInPrint: true }, { pageNumber: 3, paperSize: PaperSize.A4, fields: [], showBackgroundInPrint: true } ] };
   const [template, setTemplate] = useState<ContractTemplate>(DEFAULT_TEMPLATE);
   const [initializing, setInitializing] = useState(true);
 
-  useEffect(() => {
-    initializeApp();
-  }, []);
+  useEffect(() => { initializeApp(); }, []);
 
   const initializeApp = async () => {
-    // 1. Load Session
     const savedSession = localStorage.getItem('asra_gps_session_v2');
     if (savedSession) setCurrentUser(JSON.parse(savedSession));
-
-    // 2. Load Roles
     const { data: rData } = await supabase.from('roles').select('*');
     if (rData) setRoles(rData);
-
-    // 3. Load Template from Settings
     const { data: sData } = await supabase.from('settings').select('*').eq('key', 'contract_template');
-    
     let activeTemplate = DEFAULT_TEMPLATE;
     if (sData && sData.length > 0) {
       const dbTemplate = sData[0].value;
-      activeTemplate = {
-        ...DEFAULT_TEMPLATE,
-        ...dbTemplate,
-        pages: dbTemplate.pages && dbTemplate.pages.length > 0 ? dbTemplate.pages : DEFAULT_TEMPLATE.pages
-      };
-    } else {
-      await supabase.from('settings').upsert([{ key: 'contract_template', value: DEFAULT_TEMPLATE }]);
-    }
-    
+      activeTemplate = { ...DEFAULT_TEMPLATE, ...dbTemplate, pages: dbTemplate.pages && dbTemplate.pages.length > 0 ? dbTemplate.pages : DEFAULT_TEMPLATE.pages };
+    } else { await supabase.from('settings').upsert([{ key: 'contract_template', value: DEFAULT_TEMPLATE }]); }
     setTemplate(activeTemplate);
-
-    // CRITICAL: Hydrate and Cache all images in background to ensure persistence
-    if (activeTemplate.pages) {
-      for (const p of activeTemplate.pages) {
-        if (p.bgImage) {
-          try {
-            await cacheImage(p.bgImage);
-          } catch (err) {
-            console.error('Initial sync failed for page', p.pageNumber, err);
-          }
-        }
-      }
-    }
-
+    if (activeTemplate.pages) { for (const p of activeTemplate.pages) { if (p.bgImage) { try { await cacheImage(p.bgImage); } catch (err) { console.error('Initial sync failed for page', p.pageNumber, err); } } } }
     setInitializing(false);
   };
 
-  const userPermissions = useMemo(() => { 
-    if (!currentUser) return []; 
-    const role = roles.find((r: any) => r.id === (currentUser.role_id || currentUser.roleId)); 
-    return role ? role.perms : []; 
-  }, [currentUser, roles]);
-
-  useEffect(() => { 
-    if (!initializing && currentUser && !userPermissions.includes(activeTab)) { 
-      if (userPermissions.includes('workspace')) setActiveTab('workspace'); 
-      else if (userPermissions.includes('archive')) setActiveTab('archive'); 
-      else if (userPermissions.includes('settings')) setActiveTab('settings'); 
-    } 
-  }, [userPermissions, activeTab, initializing]);
-
-  const handleLogin = (user: any) => { 
-    setCurrentUser(user); 
-    localStorage.setItem('asra_gps_session_v2', JSON.stringify(user)); 
-    showToast(`خوش آمدید، ${user.username}`); 
-  };
-
-  const handleLogout = () => { 
-    setCurrentUser(null); 
-    localStorage.removeItem('asra_gps_session_v2'); 
-  };
+  const userPermissions = useMemo(() => { if (!currentUser) return []; const role = roles.find((r: any) => r.id === (currentUser.role_id || currentUser.roleId)); return role ? role.perms : []; }, [currentUser, roles]);
+  useEffect(() => { if (!initializing && currentUser && !userPermissions.includes(activeTab)) { if (userPermissions.includes('workspace')) setActiveTab('workspace'); else if (userPermissions.includes('archive')) setActiveTab('archive'); else if (userPermissions.includes('settings')) setActiveTab('settings'); } }, [userPermissions, activeTab, initializing]);
+  const handleLogin = (user: any) => { setCurrentUser(user); localStorage.setItem('asra_gps_session_v2', JSON.stringify(user)); showToast(`خوش آمدید، ${user.username}`); };
+  const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('asra_gps_session_v2'); };
 
   if (initializing) return <div className="fixed inset-0 bg-slate-50 flex items-center justify-center font-black text-slate-400">در حال بارگذاری سیستم...</div>;
   if (!currentUser) return <LoginForm onLogin={handleLogin} />;
@@ -1027,15 +1463,14 @@ export default function App() {
     <div className="flex min-h-screen bg-[#FDFDFD] font-sans overflow-hidden select-none" dir="rtl">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userPermissions={userPermissions} onLogout={handleLogout} />
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative no-print">
-        <div className="flex-1 overflow-auto p-0 md:p-5 custom-scrollbar h-full">
+        <div className="flex-1 overflow-hidden h-full">
           {activeTab === 'workspace' && <Workspace template={template} editData={editingContract} onEditCancel={() => setEditingContract(null)} perms={userPermissions} formData={formData} setFormData={setFormData} />}
           {activeTab === 'settings' && <SettingsPanel template={template} setTemplate={setTemplate} userPermissions={userPermissions} />}
           {activeTab === 'archive' && <ArchivePanel onEdit={(c) => { setEditingContract(c); setActiveTab('workspace'); }} perms={userPermissions} />}
+          {activeTab === 'accounting' && <AccountingPanel perms={userPermissions} />}
         </div>
       </main>
-      
       <PrintLayout template={template} formData={formData} />
-      
       <Toast />
       <style>{`
         @font-face { font-family: 'Vazirmatn'; font-display: swap; }
