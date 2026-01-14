@@ -25,6 +25,11 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;400;700;900&display=swap" rel="stylesheet">
+    
+    <!-- PDF Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
     <style>
         body {
             font-family: 'Vazirmatn', sans-serif;
@@ -47,6 +52,15 @@
             .print-text-content { width: 100% !important; font-family: 'Vazirmatn', sans-serif !important; font-weight: 900 !important; color: black !important; }
         }
         .print-root-layer { display: none; }
+        
+        /* Off-screen Export Container */
+        #pdf-export-container {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            width: 210mm;
+            background: white;
+        }
     </style>
 <script type="importmap">
 {
@@ -63,8 +77,8 @@
 </head>
 <body>
     <div id="root"></div>
+    <div id="pdf-export-container"></div>
     <script>
-        // Use absolute root path for service worker
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js', { scope: '/' })
