@@ -899,7 +899,7 @@ const VisualCanvasPage = ({
       {activeFields.map((field) => (
         <div
           key={field.id}
-          className={`absolute flex items-center transition-all duration-300 ${activeFieldKey === field.key ? 'z-50' : 'z-10'} cursor-pointer`}
+          className={`absolute flex transition-all duration-300 ${activeFieldKey === field.key ? 'z-50' : 'z-10'} cursor-pointer`}
           style={{
             left: `${field.x}%`,
             top: `${field.y}%`,
@@ -907,7 +907,7 @@ const VisualCanvasPage = ({
             height: `${(field.height || 30) * zoom}px`,
             transform: `rotate(${field.rotation}deg)`,
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start', // Fixed: Use flex-start to align exactly with Y coordinate
             justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
           }}
           onClick={(e) => {
@@ -925,7 +925,7 @@ const VisualCanvasPage = ({
           
           {field.isDropdown ? (
             <div 
-              className="w-full h-full flex items-center gap-1 overflow-hidden"
+              className="w-full h-full flex items-start gap-1 overflow-hidden"
               style={{
                 justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
               }}
@@ -935,11 +935,14 @@ const VisualCanvasPage = ({
                 style={{ 
                   fontSize: `${field.fontSize * zoom}px`,
                   textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
+                  lineHeight: 1, // Fixed: Force line height 1 for precision
+                  padding: 0,
+                  marginTop: 0
                 }}
                >
                  {formData[field.key] || (field.options?.[0] || '')}
                </span>
-               <ChevronDown size={12 * zoom} className="text-slate-400 flex-shrink-0" />
+               <ChevronDown size={12 * zoom} className="text-slate-400 flex-shrink-0 mt-0.5" />
             </div>
           ) : (
             <input
@@ -952,12 +955,16 @@ const VisualCanvasPage = ({
                 setOpenDropdown(null);
               }}
               onKeyDown={(e) => handleKeyDown(e, field)}
-              className="w-full h-full bg-transparent border-none outline-none font-bold text-slate-800 p-0 m-0"
+              className="w-full bg-transparent border-none outline-none font-bold text-slate-800 p-0 m-0"
               style={{
                 fontSize: `${field.fontSize * zoom}px`,
                 textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
-                lineHeight: 1,
-                boxSizing: 'border-box'
+                lineHeight: 1, // Fixed: Ensure input text doesn't drift down
+                height: '100%',
+                padding: 0,
+                boxSizing: 'border-box',
+                appearance: 'none',
+                WebkitAppearance: 'none'
               }}
             />
           )}
@@ -1820,9 +1827,9 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
         <div className="flex-1 bg-slate-200/30 p-8 overflow-auto flex items-start justify-center custom-scrollbar no-print">
           <div ref={canvasRef} className="bg-white shadow-2xl relative border border-slate-200 transition-all origin-top no-print" style={{ width: activePage.paperSize === PaperSize.A4 ? '595px' : '420px', height: activePage.paperSize === PaperSize.A4 ? '842px' : '595px', backgroundImage: canvasBg ? `url(${canvasBg})` : 'none', backgroundSize: '100% 100%', imageRendering: 'high-quality' }}>
             {fields.filter(f => f.isActive).map(f => (
-              <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none group/field ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
+              <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none group/field ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'flex-start', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
                 <div className={`absolute -inset-2 border-2 rounded-lg transition-all ${selectedFieldId === f.id ? 'border-blue-500 bg-blue-500/5 shadow-md' : 'border-transparent'}`} />
-                <span className={`relative font-black tracking-tight w-full leading-tight break-words hyphens-auto ${selectedFieldId === f.id ? 'text-blue-700' : 'text-slate-800 opacity-60'}`} style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+                <span className={`relative font-black tracking-tight w-full leading-none break-words hyphens-auto ${selectedFieldId === f.id ? 'text-blue-700' : 'text-slate-800 opacity-60'}`} style={{ overflowWrap: 'break-word', wordBreak: 'break-word', lineHeight: 1 }}>
                   {f.label}
                   {f.isDropdown && <ChevronDown size={8} className="inline mr-1 opacity-40" />}
                 </span>
