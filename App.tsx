@@ -1184,23 +1184,60 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
   };
 
   const checkAndDeleteClient = async (client: ClientProfile) => {
-    const { count: contractCount } = await supabase.from('contracts').select('*', { count: 'exact', head: true }).eq('client_id', client.id);
+    // 1. Check for active contracts in archive
+    const { count: contractCount } = await supabase
+      .from('contracts')
+      .select('*', { count: 'exact', head: true })
+      .eq('client_id', client.id);
+    
     if (contractCount && contractCount > 0) {
-      showToast('خطا: این مشتری دارای قرارداد ثبت شده است و حذف نمی‌شود');
+      showToast('خطا: این مشتری دارای قرارداد در بایگانی است. ابتدا قراردادها را حذف کنید.');
       return;
     }
 
-    const { count: transCount } = await supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('client_id', client.id);
-    if (transCount && transCount > 0) {
-      showToast('خطا: این مشتری دارای سوابق مالی است و حذف نمی‌شود');
-      return;
+    // 2. Check financial balance
+    const { data: transactions } = await supabase
+      .from('transactions')
+      .select('type, amount')
+      .eq('client_id', client.id);
+
+    if (transactions && transactions.length > 0) {
+      const charges = transactions.filter(t => t.type === 'charge').reduce((acc, t) => acc + Number(t.amount || 0), 0);
+      const payments = transactions.filter(t => t.type === 'payment').reduce((acc, t) => acc + Number(t.amount || 0), 0);
+      const balance = charges - payments;
+
+      if (balance !== 0) {
+        showToast(`خطا: مشتری دارای تراز مالی غیرصفر (${balance.toLocaleString()} AFN) است.`);
+        return;
+      }
     }
 
-    if (window.confirm(`آیا از حذف پرونده ${client.name} اطمینان دارید؟`)) {
-      const { error } = await supabase.from('clients').delete().eq('id', client.id);
-      if (!error) {
-        showToast('پرونده مشتری با موفقیت حذف گردید');
+    // If both checks pass:
+    if (window.confirm(`آیا از حذف پرونده ${client.name} و تمامی سوابق مالی بی‌حساب آن اطمینان دارید؟`)) {
+      showToast('در حال پاکسازی اطلاعات...');
+      
+      // Step 1: Wipe transactions first (Cascade in app layer)
+      const { error: transDeleteError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('client_id', client.id);
+
+      if (transDeleteError) {
+        showToast('خطا در پاکسازی تراکنش‌ها');
+        return;
+      }
+
+      // Step 2: Delete client profile
+      const { error: clientDeleteError } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', client.id);
+      
+      if (!clientDeleteError) {
+        showToast('پرونده مشتری و تمامی سوابق مالی مرتبط حذف گردید');
         fetchClients();
+      } else {
+        showToast('خطا در حذف نهایی پرونده');
       }
     }
   };
@@ -2341,7 +2378,7 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
       {assignmentModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => setAssignmentModal(null)} />
-          <div className="bg-white w-full max-w-md rounded-[48px] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 border border-white">
+          <div className="bg-white w-full max-md rounded-[48px] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 border border-white">
             <div className="p-10 bg-slate-900 text-white flex justify-between items-center"><div><h3 className="text-2xl font-black flex items-center gap-3"><UserCheck size={24}/> ارجاع پرونده</h3><p className="text-[10px] font-bold opacity-60 mt-1">انتخاب کارمند مسئول برای قرارداد</p></div><button onClick={() => setAssignmentModal(null)} className="p-2 hover:bg-white/20 rounded-full transition-all"><X size={20}/></button></div>
             <div className="p-8 max-h-[400px] overflow-y-auto custom-scrollbar">
               <div className="space-y-3">
