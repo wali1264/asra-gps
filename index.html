@@ -26,6 +26,25 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;400;700;900&display=swap" rel="stylesheet">
     
+    <!-- Added Fonts for Professional Printing -->
+    <link href="https://fonts.googleapis.com/css2?family=Lalezar&display=swap" rel="stylesheet">
+    <style>
+      @font-face {
+        font-family: 'Bahij Nazanin';
+        src: url('https://fonts.cdnfonts.com/s/73111/Bahij_Nazanin-Regular.woff') format('woff');
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Bahij Nazanin';
+        src: url('https://fonts.cdnfonts.com/s/73111/Bahij_Nazanin-Bold.woff') format('woff');
+        font-weight: bold;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
+
     <!-- PDF Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -49,7 +68,7 @@
             .print-root-layer { display: block !important; visibility: visible !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; }
             .print-page-unit { display: block !important; position: relative !important; margin: 0 auto !important; overflow: hidden !important; page-break-after: always !important; box-sizing: border-box !important; background-color: white !important; }
             .print-field { position: absolute !important; display: flex !important; align-items: center !important; line-height: 1.2 !important; pointer-events: none !important; white-space: nowrap !important; }
-            .print-text-content { width: 100% !important; font-family: 'Vazirmatn', sans-serif !important; font-weight: 900 !important; color: black !important; }
+            .print-text-content { width: 100% !important; font-weight: 900 !important; color: black !important; }
         }
         .print-root-layer { display: none; }
         

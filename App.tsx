@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Layout, FileText, Settings, Archive, User, Search, Printer, Plus, Save, Move, RotateCw, Upload, Trash2, AlignLeft, AlignCenter, AlignRight, Grid, List, Layers, PlusCircle, ChevronDown, Files, UserPlus, X, ChevronLeft, CheckCircle2, Type, Maximize2, Bell, Pencil, ShieldCheck, Database, Download, FileJson, Key, Check, Lock, LogOut, UserCheck, Shield, Eye, EyeOff, Repeat, Phone, CreditCard, UserCircle, ZoomIn, ZoomOut, ChevronUp, Info, BookMarked, Copy, Wallet, ArrowUpCircle, ArrowDownCircle, Calculator, TrendingUp, TrendingDown, Clock, Users, Share2, MessageCircle, BarChart3, Calendar, Filter } from 'lucide-react';
+import { Layout, FileText, Settings, Archive, User, Search, Printer, Plus, Save, Move, RotateCw, Upload, Trash2, AlignLeft, AlignCenter, AlignRight, Grid, List, Layers, PlusCircle, ChevronDown, Files, UserPlus, X, ChevronLeft, CheckCircle2, Type, Maximize2, Bell, Pencil, ShieldCheck, Database, Download, FileJson, Key, Check, Lock, LogOut, UserCheck, Shield, Eye, EyeOff, Repeat, Phone, CreditCard, UserCircle, ZoomIn, ZoomOut, ChevronUp, Info, BookMarked, Copy, Wallet, ArrowUpCircle, ArrowDownCircle, Calculator, TrendingUp, TrendingDown, Clock, Users, Share2, MessageCircle, BarChart3, Calendar, Filter, UserPlus2, Forward, CalendarClock, Image as ImageIcon, ImageOff } from 'lucide-react';
 import { PaperSize, ContractField, ContractTemplate, TextAlignment, ContractPage, ClientProfile } from './types';
 import { INITIAL_FIELDS } from './constants';
 import ReactDOM from 'react-dom';
@@ -286,7 +286,7 @@ const DesignGate = ({ onUnlock, onCancel }: { onUnlock: () => void, onCancel: ()
 };
 
 // --- Accounting Logic ---
-const AccountingPanel = ({ perms }: { perms: string[] }) => {
+const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser: any }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
@@ -294,6 +294,7 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
   const [entryType, setEntryType] = useState<'charge' | 'payment'>('charge');
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
+  const isAdmin = currentUser?.username === 'admin';
 
   useEffect(() => {
     fetchClients();
@@ -527,7 +528,7 @@ const AccountingPanel = ({ perms }: { perms: string[] }) => {
 };
 
 // --- Independent PDF Rendering Engine ---
-const handleExportPDF = async (template: ContractTemplate, formData: Record<string, string>, clientName: string, plate: string, isWhatsApp: boolean = false) => {
+const handleExportPDF = async (template: ContractTemplate, formData: Record<string, string>, clientName: string, plate: string, activeFont: string, isWhatsApp: boolean = false) => {
   const container = document.getElementById('pdf-export-container');
   if (!container) return;
   
@@ -556,7 +557,7 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
     pageEl.style.overflow = 'hidden';
     pageEl.style.backgroundColor = 'white';
 
-    if (page.bgImage) {
+    if (page.bgImage && page.showBackgroundInPrint) {
       const bgImg = document.createElement('img');
       bgImg.src = page.bgImage;
       bgImg.style.position = 'absolute';
@@ -576,7 +577,7 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
       fieldEl.style.top = `${field.y}%`;
       fieldEl.style.width = `${field.width}px`;
       fieldEl.style.fontSize = `${field.fontSize * 1.3}px`;
-      fieldEl.style.fontFamily = 'Vazirmatn';
+      fieldEl.style.fontFamily = activeFont || 'Vazirmatn';
       fieldEl.style.fontWeight = '900';
       fieldEl.style.color = 'black';
       fieldEl.style.textAlign = field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center';
@@ -624,7 +625,7 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
 };
 
 // --- Print Renderer Component ---
-const PrintLayout = ({ template, formData }: { template: ContractTemplate, formData: Record<string, string> }) => {
+const PrintLayout = ({ template, formData, activeFont }: { template: ContractTemplate, formData: Record<string, string>, activeFont: string }) => {
   const [localBgs, setLocalBgs] = useState<Record<number, string>>({});
 
   useEffect(() => {
@@ -680,7 +681,7 @@ const PrintLayout = ({ template, formData }: { template: ContractTemplate, formD
                   justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
                 }}
               >
-                <span className="print-text-content">
+                <span className="print-text-content" style={{ fontFamily: activeFont || 'Vazirmatn' }}>
                   {formData[field.key] || ''}
                 </span>
               </div>
@@ -693,14 +694,24 @@ const PrintLayout = ({ template, formData }: { template: ContractTemplate, formD
   );
 };
 
-const Sidebar = ({ activeTab, setActiveTab, userPermissions, onLogout }: { activeTab: string, setActiveTab: (t: string) => void, userPermissions: string[], onLogout: () => void }) => {
+const Sidebar = ({ activeTab, setActiveTab, userPermissions, onLogout, currentUser }: { activeTab: string, setActiveTab: (t: string) => void, userPermissions: string[], onLogout: () => void, currentUser: any }) => {
+  const isAdmin = currentUser?.username === 'admin';
+  const isStrictEmployee = currentUser?.role_id === 'employee_role';
+  
   const menuItems = [
     { id: 'workspace', icon: Layout, label: 'میز کار', perm: 'workspace' },
     { id: 'archive', icon: Archive, label: 'بایگانی', perm: 'archive' },
     { id: 'accounting', icon: Wallet, label: 'امور مالی', perm: 'accounting' },
     { id: 'reports', icon: BarChart3, label: 'گزارشات', perm: 'reports' },
     { id: 'settings', icon: Settings, label: 'تنظیمات', perm: 'settings' }
-  ].filter(item => userPermissions.includes(item.perm));
+  ].filter(item => {
+    // Priority 1: Admin sees everything
+    if (isAdmin) return true;
+    // Priority 2: System Employee role is forced to specific menus
+    if (isStrictEmployee) return item.id === 'archive' || item.id === 'workspace';
+    // Priority 3: Custom roles see what is checked in their permissions
+    return userPermissions.includes(item.perm);
+  });
 
   return (
     <aside className="w-20 md:w-64 bg-slate-900 text-white min-h-screen flex flex-col p-4 no-print transition-all">
@@ -724,10 +735,24 @@ const Sidebar = ({ activeTab, setActiveTab, userPermissions, onLogout }: { activ
           </button>
         ))}
       </nav>
-      <button onClick={onLogout} className="flex items-center gap-3 p-4 rounded-2xl hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-all mt-auto">
-        <LogOut size={20} />
-        <span className="hidden md:block font-medium">خروج از سیستم</span>
-      </button>
+      <div className="mt-auto flex flex-col gap-2">
+        <div className="bg-slate-800/50 p-4 rounded-2xl mb-2 hidden md:block">
+           <div className="flex items-center gap-3 mb-1">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-black text-xs">{currentUser?.username?.[0]?.toUpperCase()}</div>
+              <div className="flex flex-col overflow-hidden">
+                 <span className="text-[10px] font-black text-blue-400 uppercase leading-none mb-1">کاربر فعلی</span>
+                 <span className="text-xs font-black text-white truncate">{currentUser?.username}</span>
+              </div>
+           </div>
+           {isAdmin && <span className="text-[8px] font-black bg-white/10 text-white px-2 py-0.5 rounded uppercase tracking-widest">Super Admin</span>}
+           {isStrictEmployee && <span className="text-[8px] font-black bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded uppercase tracking-widest">Employee Mode</span>}
+           {!isAdmin && !isStrictEmployee && <span className="text-[8px] font-black bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded uppercase tracking-widest">Custom Role</span>}
+        </div>
+        <button onClick={onLogout} className="flex items-center gap-3 p-4 rounded-2xl hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-all">
+          <LogOut size={20} />
+          <span className="hidden md:block font-medium">خروج از سیستم</span>
+        </button>
+      </div>
     </aside>
   );
 };
@@ -781,7 +806,7 @@ const LoginForm = ({ onLogin }: { onLogin: (user: any) => void }) => {
 };
 
 // --- Custom Popover Select for Dropdowns ---
-const CustomSelect = ({ field, value, onSelect, zoom, onClose }: { field: ContractField, value: string, onSelect: (val: string) => void, zoom: number, onClose: () => void }) => {
+const CustomSelect = ({ field, value, onSelect, zoom, onClose, activeFont }: { field: ContractField, value: string, onSelect: (val: string) => void, zoom: number, onClose: () => void, activeFont: string }) => {
   const options = field.options || [];
   return (
     <div 
@@ -803,7 +828,7 @@ const CustomSelect = ({ field, value, onSelect, zoom, onClose }: { field: Contra
             onClose();
           }}
           className={`w-full p-3 text-sm font-bold transition-all text-right border-b border-slate-50 last:border-0 hover:bg-blue-50 ${value === opt ? 'bg-blue-100 text-blue-700' : 'text-slate-700'}`}
-          style={{ fontSize: `${field.fontSize * zoom}px` }}
+          style={{ fontSize: `${field.fontSize * zoom}px`, fontFamily: activeFont || 'Vazirmatn' }}
         >
           {opt}
         </button>
@@ -819,14 +844,16 @@ const VisualCanvasPage = ({
   setFormData, 
   zoom, 
   activeFieldKey, 
-  setActiveFieldKey 
+  setActiveFieldKey,
+  activeFont
 }: { 
   page: ContractPage, 
   formData: Record<string, string>, 
   setFormData: React.Dispatch<React.SetStateAction<Record<string, string>>>,
   zoom: number,
   activeFieldKey: string | null,
-  setActiveFieldKey: (key: string | null) => void
+  setActiveFieldKey: (key: string | null) => void,
+  activeFont: string
 }) => {
   const [localBg, setLocalBg] = useState<string>('');
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -907,7 +934,7 @@ const VisualCanvasPage = ({
             height: `${(field.height || 30) * zoom}px`,
             transform: `rotate(${field.rotation}deg)`,
             display: 'flex',
-            alignItems: 'flex-start', // Fixed: Use flex-start to align exactly with Y coordinate
+            alignItems: 'flex-start',
             justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
           }}
           onClick={(e) => {
@@ -934,8 +961,9 @@ const VisualCanvasPage = ({
                 className="font-bold text-slate-800 whitespace-nowrap truncate"
                 style={{ 
                   fontSize: `${field.fontSize * zoom}px`,
+                  fontFamily: activeFont || 'Vazirmatn',
                   textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
-                  lineHeight: 1, // Fixed: Force line height 1 for precision
+                  lineHeight: 1,
                   padding: 0,
                   marginTop: 0
                 }}
@@ -958,8 +986,9 @@ const VisualCanvasPage = ({
               className="w-full bg-transparent border-none outline-none font-bold text-slate-800 p-0 m-0"
               style={{
                 fontSize: `${field.fontSize * zoom}px`,
+                fontFamily: activeFont || 'Vazirmatn',
                 textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
-                lineHeight: 1, // Fixed: Ensure input text doesn't drift down
+                lineHeight: 1,
                 height: '100%',
                 padding: 0,
                 boxSizing: 'border-box',
@@ -976,6 +1005,7 @@ const VisualCanvasPage = ({
               onSelect={(val) => setFormData(p => ({ ...p, [field.key]: val }))}
               zoom={zoom}
               onClose={() => setOpenDropdown(null)}
+              activeFont={activeFont}
             />
           )}
         </div>
@@ -984,7 +1014,7 @@ const VisualCanvasPage = ({
   );
 };
 
-const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormData }: { template: ContractTemplate, editData?: any, onEditCancel?: () => void, perms: string[], formData: Record<string, string>, setFormData: React.Dispatch<React.SetStateAction<Record<string, string>>> }) => {
+const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormData, currentUser, activeFont, setActiveFont }: { template: ContractTemplate, editData?: any, onEditCancel?: () => void, perms: string[], formData: Record<string, string>, setFormData: React.Dispatch<React.SetStateAction<Record<string, string>>>, currentUser: any, activeFont: string, setActiveFont: (f: string) => void }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
@@ -994,9 +1024,26 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
   const [visiblePages, setVisiblePages] = useState<number[]>([1]);
   const [zoom, setZoom] = useState(1.4);
   const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
+  const [expiryDuration, setExpiryDuration] = useState<6 | 12>(12);
+  const [isExpiryMenuOpen, setIsExpiryMenuOpen] = useState(false);
+  const [isFontMenuOpen, setIsFontMenuOpen] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const [duplicatePlateError, setDuplicatePlateError] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientProfile | null>(null);
+  
+  const isAdmin = currentUser?.username === 'admin';
+  const isStrictEmployee = currentUser?.role_id === 'employee_role';
+  
+  // Rules for Employee: Only assigned contracts. No new creation. No search.
+  const canSearch = !isStrictEmployee && (isAdmin || perms.includes('workspace_search'));
+  const canCreate = !isStrictEmployee && (isAdmin || perms.includes('workspace_create'));
+  const canEditInWorkspace = isAdmin || perms.includes('archive_edit') || isStrictEmployee; // Employee MUST be able to edit their assigned work
+
+  const FONT_OPTIONS = [
+    { name: 'Vazirmatn', label: 'وزیر متن (استاندارد)' },
+    { name: 'Bahij Nazanin', label: 'بهیج نازنین (رسمی)' },
+    { name: 'Lalezar', label: 'لاله‌زار (ضخیم)' }
+  ];
 
   useEffect(() => {
     fetchClients();
@@ -1067,15 +1114,15 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
   }, [editData, clients, template.pages]);
 
   const filteredClients = useMemo(() => {
-    if (!perms.includes('workspace_search')) return [];
+    if (!canSearch) return [];
     const lowerSearch = searchTerm.toLowerCase().trim();
     if (!lowerSearch) return [];
     return clients.filter(c => c.name.toLowerCase().includes(lowerSearch) || (c.tazkira && c.tazkira.toLowerCase().includes(lowerSearch)));
-  }, [clients, searchTerm, perms]);
+  }, [clients, searchTerm, canSearch]);
 
   const handleCreateClient = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!perms.includes('workspace_create')) { showToast('شما دسترسی ایجاد پرونده ندارید'); return; }
+    if (!canCreate) { showToast('شما دسترسی ایجاد پرونده ندارید'); return; }
     if (duplicatePlateError && !editingClient) { showToast('شماره پلاک تکراری است'); return; }
     
     const data = new FormData(e.currentTarget);
@@ -1129,13 +1176,32 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
 
   const handleSaveContract = async (isExtension: boolean = false) => {
     if (!selectedClient) return;
-    if (!perms.includes('workspace_create') && !editData) return;
-    if (editData && !isExtension && !perms.includes('archive_edit')) { showToast('دسترسی ویرایش قرارداد را ندارید'); return; }
+    if (!canCreate && !editData) return;
+    if (editData && !isExtension && !canEditInWorkspace) { showToast('دسترسی ویرایش قرارداد را ندارید'); return; }
+    
+    const expDate = new Date();
+    expDate.setMonth(expDate.getMonth() + expiryDuration);
+
     if (editData && !isExtension) {
-      const { error } = await supabase.from('contracts').update({ form_data: formData, timestamp: new Date().toISOString() }).eq('id', editData.id);
+      const { error } = await supabase.from('contracts').update({ 
+        form_data: formData, 
+        timestamp: new Date().toISOString(),
+        expiry_date: expDate.toISOString()
+      }).eq('id', editData.id);
       if (!error) showToast('تغییرات قرارداد بروزرسانی شد');
     } else {
-      const newEntry = { id: Date.now().toString(), client_id: selectedClient.id, client_name: selectedClient.name, form_data: formData, timestamp: new Date().toISOString(), template_id: template.id, is_extended: isExtension };
+      const assignedToId = currentUser.username === 'admin' ? null : currentUser.id;
+      const newEntry = { 
+        id: Date.now().toString(), 
+        client_id: selectedClient.id, 
+        client_name: selectedClient.name, 
+        form_data: formData, 
+        timestamp: new Date().toISOString(), 
+        expiry_date: expDate.toISOString(),
+        template_id: template.id, 
+        is_extended: isExtension,
+        assigned_to: assignedToId
+      };
       const { error } = await supabase.from('contracts').insert([newEntry]);
       if (!error) showToast(isExtension ? 'قرارداد تمدید و به عنوان سند جدید ثبت شد' : 'قرارداد با موفقیت در بایگانی ثبت شد');
     }
@@ -1170,36 +1236,49 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
   if (!selectedClient) {
     return (
       <div className="max-w-4xl mx-auto py-12 animate-in fade-in slide-in-from-bottom-4 no-print h-full overflow-y-auto custom-scrollbar">
-        <div className="fixed top-24 left-8 z-[50]">
-          <button 
-            onClick={() => setIsClientManagerOpen(true)}
-            className="w-14 h-14 bg-white border border-slate-100 rounded-full shadow-2xl flex items-center justify-center text-slate-400 hover:text-blue-600 hover:scale-110 transition-all group"
-          >
-            <Users size={24} />
-            <div className="absolute -bottom-10 right-0 bg-slate-900 text-white text-[9px] font-black px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">مدیریت مشتریان</div>
-          </button>
-        </div>
-
-        <div className="text-center mb-12 pt-10">
-          <div className="w-40 h-40 bg-white rounded-[48px] flex items-center justify-center mx-auto mb-6 shadow-2xl p-4 border border-slate-50">
-             <AsraLogo size={120} />
-          </div>
-          <h2 className="text-4xl font-black text-slate-900 mb-4 tracking-tight">میز کار اسراء GPS</h2>
-          <p className="text-slate-500 font-medium text-lg italic opacity-80">سامانه هوشمند ثبت و تمدید خدمات ردیابی</p>
-        </div>
-        <div className="flex gap-5 items-center px-4">
-          <div className="relative flex-1 group">
-            <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={24} />
-            <input disabled={!perms.includes('workspace_search')} type="text" placeholder={perms.includes('workspace_search') ? "جستجوی نام یا شماره پلاک مشتری..." : "شما دسترسی جستجو ندارید"} className={`w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-medium ${!perms.includes('workspace_search') ? 'opacity-50 grayscale cursor-not-allowed' : 'focus:border-blue-500 focus:shadow-[0_20px_50px_rgba(59,130,246,0.1)]'}`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-          </div>
-          {perms.includes('workspace_create') && (
-            <button onClick={() => { setEditingClient(null); setIsModalOpen(true); setDuplicatePlateError(false); }} className="bg-blue-600 text-white p-6 rounded-[32px] shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-105 transition-all flex items-center gap-3 group">
-                <UserPlus size={28} />
-                <span className="hidden md:block font-black text-lg">تشکیل پرونده</span>
+        {isAdmin && (
+          <div className="fixed top-24 left-8 z-[50]">
+            <button 
+              onClick={() => setIsClientManagerOpen(true)}
+              className="w-14 h-14 bg-white border border-slate-100 rounded-full shadow-2xl flex items-center justify-center text-slate-400 hover:text-blue-600 hover:scale-110 transition-all group"
+            >
+              <Users size={24} />
+              <div className="absolute -bottom-10 right-0 bg-slate-900 text-white text-[9px] font-black px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">مدیریت مشتریان</div>
             </button>
-          )}
-        </div>
-        {searchTerm && perms.includes('workspace_search') && (
+          </div>
+        )}
+
+        {(canSearch || canCreate) ? (
+          <>
+            <div className="text-center mb-12 pt-10">
+              <div className="w-40 h-40 bg-white rounded-[48px] flex items-center justify-center mx-auto mb-6 shadow-2xl p-4 border border-slate-50">
+                 <AsraLogo size={120} />
+              </div>
+              <h2 className="text-4xl font-black text-slate-900 mb-4 tracking-tight">میز کار اسراء GPS</h2>
+              <p className="text-slate-500 font-medium text-lg italic opacity-80">سامانه هوشمند ثبت و تمدید خدمات ردیابی</p>
+            </div>
+            <div className="flex gap-5 items-center px-4">
+              <div className="relative flex-1 group">
+                <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={24} />
+                <input disabled={!canSearch} type="text" placeholder={canSearch ? "جستجوی نام یا شماره پلاک مشتری..." : "شما دسترسی جستجو ندارید"} className={`w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-medium ${!canSearch ? 'opacity-50 grayscale cursor-not-allowed' : 'focus:border-blue-500 focus:shadow-[0_20px_50px_rgba(59,130,246,0.1)]'}`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+              </div>
+              {canCreate && (
+                <button onClick={() => { setEditingClient(null); setIsModalOpen(true); setDuplicatePlateError(false); }} className="bg-blue-600 text-white p-6 rounded-[32px] shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-105 transition-all flex items-center gap-3 group">
+                    <UserPlus size={28} />
+                    <span className="hidden md:block font-black text-lg">تشکیل پرونده</span>
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="h-full flex items-center justify-center text-slate-300 font-black flex-col gap-6 italic">
+             <div className="w-32 h-32 bg-slate-50 rounded-full flex items-center justify-center border border-slate-100"><Layout size={60} className="opacity-20"/></div>
+             <p className="text-xl">میز کار در انتظار عملیات از بایگانی است.</p>
+             <p className="text-xs opacity-50 not-italic">لطفاً از بخش بایگانی، قرارداد مورد نظر را برای چاپ انتخاب کنید.</p>
+          </div>
+        )}
+        
+        {searchTerm && canSearch && (
           <div className="mt-8 bg-white/80 backdrop-blur-xl rounded-[40px] border border-white/50 shadow-2xl overflow-hidden animate-in zoom-in-95 mx-4 mb-20">
             <div className="p-5 bg-slate-50/50 border-b text-xs font-black text-slate-400 uppercase tracking-widest">نتایج یافت شده در بایگانی</div>
             {filteredClients.length > 0 ? (
@@ -1260,18 +1339,22 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
                       <div className="flex justify-between items-start mb-6">
                         <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-black">{client.name[0]}</div>
                         <div className="flex gap-2">
-                           <button 
-                            onClick={() => { setEditingClient(client); setIsModalOpen(true); setIsClientManagerOpen(false); }}
-                            className="p-3 bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-all"
-                           >
-                            <Pencil size={18}/>
-                           </button>
-                           <button 
-                            onClick={() => checkAndDeleteClient(client)}
-                            className="p-3 bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all"
-                           >
-                            <Trash2 size={18}/>
-                           </button>
+                           {(canCreate) && (
+                             <button 
+                              onClick={() => { setEditingClient(client); setIsModalOpen(true); setIsClientManagerOpen(false); }}
+                              className="p-3 bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-all"
+                             >
+                              <Pencil size={18}/>
+                             </button>
+                           )}
+                           {isAdmin && (
+                             <button 
+                              onClick={() => checkAndDeleteClient(client)}
+                              className="p-3 bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all"
+                             >
+                              <Trash2 size={18}/>
+                             </button>
+                           )}
                         </div>
                       </div>
                       
@@ -1360,7 +1443,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
   return (
     <div className="relative w-full h-full flex flex-col no-print bg-[#f8fafc]" ref={workspaceRef}>
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-fit max-w-[95%] no-print">
-        <div className="bg-white/80 backdrop-blur-2xl border border-white/50 px-2 py-2 rounded-[32px] shadow-[0_20px_40px_rgba(0,0,0,0.1)] flex items-center gap-1">
+        <div className="bg-white/80 backdrop-blur-2xl border border-white/50 px-3 py-2 rounded-[32px] shadow-[0_20px_40px_rgba(0,0,0,0.1)] flex items-center gap-1 min-w-[550px]">
           <button 
             onClick={() => setIsClientDetailsOpen(true)}
             className="flex items-center gap-3 pr-2 pl-4 py-1.5 rounded-full hover:bg-blue-50 transition-all group"
@@ -1398,13 +1481,64 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
 
           <div className="w-[1px] h-6 bg-slate-200 mx-2" />
 
-          <button 
-            onClick={handleLoadPreset}
-            title="فراخوانی قالب ذخیره شده"
-            className="w-10 h-10 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-full transition-all"
-          >
-            <BookMarked size={20} />
-          </button>
+          <div className="flex gap-1 items-center">
+             {!isStrictEmployee && (
+               <div className="relative">
+                  <button 
+                      onClick={() => { setIsFontMenuOpen(!isFontMenuOpen); setIsExpiryMenuOpen(false); }}
+                      className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${isFontMenuOpen ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400'} hover:scale-105`}
+                      title="انتخاب فونت"
+                  >
+                    <Type size={18} />
+                  </button>
+                  {isFontMenuOpen && (
+                    <div className="absolute top-full mt-3 right-0 bg-white border border-slate-100 shadow-2xl rounded-2xl p-2 z-[200] animate-in zoom-in-95 w-48 overflow-hidden">
+                      <div className="p-3 bg-slate-50 border-b mb-1 rounded-t-xl"><span className="text-[9px] font-black text-slate-400 uppercase">انتخاب فونت تایپ</span></div>
+                      {FONT_OPTIONS.map(f => (
+                        <button key={f.name} onClick={() => { setActiveFont(f.name); setIsFontMenuOpen(false); }} className={`w-full flex items-center justify-between p-3 rounded-xl text-[10px] font-black transition-all mt-1 ${activeFont === f.name ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'hover:bg-slate-50 text-slate-600'}`}>
+                          <span style={{ fontFamily: f.name }}>{f.label}</span>
+                          {activeFont === f.name && <Check size={14}/>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+               </div>
+             )}
+
+             {!isStrictEmployee && (
+               <div className="relative">
+                  <button 
+                      onClick={() => { setIsExpiryMenuOpen(!isExpiryMenuOpen); setIsFontMenuOpen(false); }}
+                      className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${expiryDuration === 6 ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'} hover:scale-105`}
+                      title="مدت اعتبار قرارداد"
+                  >
+                    <CalendarClock size={20} />
+                  </button>
+                  {isExpiryMenuOpen && (
+                    <div className="absolute top-full mt-3 right-0 bg-white border border-slate-100 shadow-2xl rounded-2xl p-2 z-[200] animate-in zoom-in-95 w-40 overflow-hidden">
+                      <button onClick={() => { setExpiryDuration(12); setIsExpiryMenuOpen(false); }} className={`w-full flex items-center justify-between p-3 rounded-xl text-[10px] font-black transition-all ${expiryDuration === 12 ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'hover:bg-slate-50 text-slate-600'}`}>
+                        <span>۱۲ ماهه (پیش‌فرض)</span>
+                        {expiryDuration === 12 && <Check size={14}/>}
+                      </button>
+                      <button onClick={() => { setExpiryDuration(6); setIsExpiryMenuOpen(false); }} className={`w-full flex items-center justify-between p-3 rounded-xl text-[10px] font-black transition-all mt-1 ${expiryDuration === 6 ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'hover:bg-slate-50 text-slate-600'}`}>
+                        <span>۶ ماهه</span>
+                        {expiryDuration === 6 && <Check size={14}/>}
+                      </button>
+                    </div>
+                  )}
+               </div>
+             )}
+          </div>
+
+          {!isStrictEmployee && (
+            <button 
+              onClick={handleLoadPreset}
+              title="فراخوانی قالب ذخیره شده"
+              className="w-10 h-10 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-full transition-all"
+            >
+              <BookMarked size={20} />
+            </button>
+          )}
 
           <button 
             onClick={resetWorkspace}
@@ -1462,6 +1596,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
                           zoom={zoom} 
                           activeFieldKey={activeFieldKey}
                           setActiveFieldKey={setActiveFieldKey}
+                          activeFont={activeFont}
                       />
                     ) : (
                       <div className="bg-white p-12 rounded-[56px] shadow-2xl border border-slate-100 w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8 relative overflow-hidden">
@@ -1474,6 +1609,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
                                 value={formData[f.key] || ''} 
                                 onChange={(e) => setFormData({...formData, [f.key]: e.target.value})} 
                                 placeholder="..." 
+                                style={{ fontFamily: activeFont || 'Vazirmatn' }}
                                 className="w-full px-6 py-5 bg-slate-50 rounded-[24px] outline-none font-bold text-lg focus:bg-white focus:ring-4 ring-blue-50 transition-all border-2 border-transparent focus:border-blue-200"
                               />
                             </div>
@@ -1488,23 +1624,27 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
           <div className="w-full max-w-4xl pt-10 pb-20 px-6 animate-in slide-in-from-bottom-10 delay-300">
             <div className="bg-white/60 backdrop-blur-xl p-8 rounded-[48px] border border-white shadow-2xl flex flex-col gap-4">
               <div className="flex flex-col md:flex-row gap-4">
-                  <button 
-                    onClick={() => handleSaveContract(false)} 
-                    className="flex-[2] bg-blue-600 text-white py-7 rounded-[32px] font-black text-xl shadow-2xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"
-                  >
-                    <Save size={28} /> 
-                    {editData ? 'بروزرسانی تغییرات' : 'ثبت و آرشیو نهایی'}
-                  </button>
-                  <button 
-                    onClick={handleSaveAsPreset} 
-                    className="flex-1 bg-white border-2 border-slate-100 text-slate-700 py-7 rounded-[32px] font-black text-lg hover:bg-slate-50 hover:-translate-y-1 transition-all flex items-center justify-center gap-3 active:scale-95"
-                  >
-                    <Copy size={24} className="text-blue-500" /> ذخیره به عنوان قالب
-                  </button>
+                  {(isAdmin || canEditInWorkspace) && (
+                    <button 
+                      onClick={() => handleSaveContract(false)} 
+                      className="flex-[2] bg-blue-600 text-white py-7 rounded-[32px] font-black text-xl shadow-2xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"
+                    >
+                      <Save size={28} /> 
+                      {editData ? 'ثبت تغییرات ارجاعی' : 'ثبت و آرشیو نهایی'}
+                    </button>
+                  )}
+                  {!isStrictEmployee && (
+                    <button 
+                      onClick={handleSaveAsPreset} 
+                      className="flex-1 bg-white border-2 border-slate-100 text-slate-700 py-7 rounded-[32px] font-black text-lg hover:bg-slate-50 hover:-translate-y-1 transition-all flex items-center justify-center gap-3 active:scale-95"
+                    >
+                      <Copy size={24} className="text-blue-500" /> ذخیره به عنوان قالب
+                    </button>
+                  )}
               </div>
 
               <div className="flex flex-col md:flex-row gap-4">
-                  {editData && (
+                  {editData && (isAdmin || canEditInWorkspace) && !isStrictEmployee && (
                     <button 
                       onClick={() => handleSaveContract(true)} 
                       className="flex-1 bg-emerald-500 text-white py-6 rounded-[28px] font-black text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-600 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"
@@ -1527,11 +1667,12 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
   );
 };
 
-const UsersManager = () => {
+const UsersManager = ({ currentUser }: { currentUser: any }) => {
   const [users, setUsers] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [subTab, setSubTab] = useState<'users' | 'roles'>('users');
   const [editingUser, setEditingUser] = useState<any>(null);
+  const isAdmin = currentUser?.username === 'admin';
   
   const permissionsList = [
     { id: 'workspace', label: 'دسترسی به میز کار', parent: null }, { id: 'workspace_create', label: 'ایجاد پرونده جدید', parent: 'workspace' }, { id: 'workspace_search', label: 'جستجوی مشتریان', parent: 'workspace' }, { id: 'archive', label: 'مشاهده بایگانی', parent: null }, { id: 'archive_print', label: 'چاپ در بایگانی', parent: 'archive' }, { id: 'archive_edit', label: 'ویرایش در بایگانی', parent: 'archive' }, { id: 'archive_delete', label: 'حذف سوابق بایگانی', parent: 'archive' }, { id: 'accounting', label: 'دسترسی به امور مالی', parent: null }, { id: 'reports', label: 'مشاهده گزارشات', parent: null }, { id: 'settings', label: 'دسترسی به تنظیمات', parent: null }, { id: 'settings_boom', label: 'مدیریت بوم طراحی', parent: 'settings' }, { id: 'settings_users', label: 'مدیریت کاربران و نقش‌ها', parent: 'settings' }, { id: 'settings_backup', label: 'پشتیبان‌گیری داده‌ها', parent: 'settings' }
@@ -1556,7 +1697,14 @@ const UsersManager = () => {
     const roleId = data.get('roleId') as string;
     
     if (editingUser) {
+      if (editingUser.username === 'admin' && username !== 'admin') {
+         showToast('نام کاربری ادمین غیر قابل تغییر است');
+         return;
+      }
       await supabase.from('users').update({ username, password, role_id: roleId }).eq('id', editingUser.id);
+      if (editingUser.username === currentUser.username) {
+        showToast('اطلاعات شما بروز شد. برای اعمال کامل مجدد وارد شوید.');
+      }
     } else {
       await supabase.from('users').insert([{ username, password, role_id: roleId }]);
     }
@@ -1570,18 +1718,28 @@ const UsersManager = () => {
     const data = new FormData(e.currentTarget);
     const roleName = data.get('roleName') as string;
     const checkedPerms = Array.from(data.getAll('perms') as string[]);
-    
     await supabase.from('roles').insert([{ id: Date.now().toString(), name: roleName, perms: checkedPerms }]);
     fetchData();
     showToast('نقش جدید تعریف شد');
   };
 
-  const deleteUser = async (id: string) => {
-    await supabase.from('users').delete().eq('id', id);
-    fetchData();
+  const deleteUser = async (id: string, targetUsername: string) => {
+    if (targetUsername === 'admin') {
+      showToast('خطا: کاربر مدیر سیستم قابل حذف نیست');
+      return;
+    }
+    if (window.confirm(`آیا از حذف کاربر ${targetUsername} اطمینان دارید؟`)) {
+      await supabase.from('users').delete().eq('id', id);
+      fetchData();
+      showToast('کاربر حذف شد');
+    }
   };
 
   const deleteRole = async (id: string) => {
+    if (id === 'admin_role' || id === 'employee_role') {
+      showToast('نقش‌های سیستمی قابل حذف نیستند');
+      return;
+    }
     await supabase.from('roles').delete().eq('id', id);
     fetchData();
   };
@@ -1595,11 +1753,11 @@ const UsersManager = () => {
       {subTab === 'users' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-10">
            <div className="lg:col-span-1 bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm h-fit">
-              <h3 className="font-black text-xl mb-8 flex items-center gap-2 text-slate-800"><UserPlus className="text-blue-600"/> {editingUser ? 'ویرایش کاربر' : 'ایجاد کاربر جدید'}</h3>
+              <h3 className="font-black text-xl mb-8 flex items-center gap-2 text-slate-800"><UserPlus className="text-blue-600"/> {editingUser ? 'ویرایش اطلاعات' : 'ایجاد کاربر جدید'}</h3>
               <form onSubmit={handleSaveUser} className="space-y-6">
-                <input name="username" type="text" defaultValue={editingUser?.username} placeholder="نام کاربری" className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold" required />
+                <input name="username" type="text" defaultValue={editingUser?.username} readOnly={editingUser?.username === 'admin'} placeholder="نام کاربری" className={`w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold ${editingUser?.username === 'admin' ? 'opacity-50 cursor-not-allowed' : ''}`} required />
                 <input name="password" type="password" defaultValue={editingUser?.password} placeholder="رمز عبور" className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold" required />
-                <select name="roleId" defaultValue={editingUser?.role_id || editingUser?.roleId} className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold">
+                <select name="roleId" defaultValue={editingUser?.role_id || editingUser?.roleId} disabled={editingUser?.username === 'admin'} className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold disabled:opacity-50">
                     {roles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
                 <button className="w-full bg-blue-600 text-white py-5 rounded-[24px] font-black text-lg shadow-xl shadow-blue-100">{editingUser ? 'بروزرسانی' : 'ثبت کاربر'}</button>
@@ -1612,12 +1770,12 @@ const UsersManager = () => {
                {users.map((u: any) => (
                  <div key={u.id} className="py-5 flex items-center justify-between">
                    <div className="flex items-center gap-4">
-                     <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-black text-slate-400">{u.username[0]}</div>
+                     <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center font-black text-slate-400">{u.username?.[0]}</div>
                      <div><p className="font-bold text-slate-700">{u.username}</p><p className="text-xs text-slate-400">{roles.find((r:any)=>r.id===(u.role_id || u.roleId))?.name}</p></div>
                    </div>
                    <div className="flex gap-2">
                      <button onClick={() => setEditingUser(u)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl"><Pencil size={18}/></button>
-                     {u.username !== 'admin' && <button onClick={() => deleteUser(u.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 size={18}/></button>}
+                     {u.username !== 'admin' && <button onClick={() => deleteUser(u.id, u.username)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 size={18}/></button>}
                    </div>
                  </div>
                ))}
@@ -1651,7 +1809,10 @@ const UsersManager = () => {
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {roles.map((r:any) => (
                   <div key={r.id} className="p-6 bg-slate-50 rounded-[32px] border border-slate-100">
-                    <div className="flex justify-between items-center mb-4"><h4 className="font-black text-lg text-blue-600">{r.name}</h4>{r.id !== 'admin_role' && <Trash2 size={16} className="text-slate-300 cursor-pointer hover:text-red-500" onClick={() => deleteRole(r.id)} />}</div>
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className={`font-black text-lg ${r.id === 'employee_role' ? 'text-amber-600' : 'text-blue-600'}`}>{r.name}</h4>
+                      {r.id !== 'admin_role' && r.id !== 'employee_role' && <Trash2 size={16} className="text-slate-300 cursor-pointer hover:text-red-500" onClick={() => deleteRole(r.id)} />}
+                    </div>
                     <div className="flex flex-wrap gap-2">{r.perms?.map((p:string) => <span key={p} className="px-3 py-1 bg-white rounded-lg text-[9px] font-black text-slate-500 border border-slate-100">{permissionsList.find(pl => pl.id === p)?.label}</span>)}</div>
                   </div>
                 ))}
@@ -1761,6 +1922,14 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
            <div className="flex bg-slate-100 p-1 rounded-2xl">{[1, 2, 3].map(p => <button key={p} onClick={() => onPageChange(p)} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${activePageNum === p ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>برگ {p}</button>)}</div>
         </div>
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => updatePage({ showBackgroundInPrint: !activePage.showBackgroundInPrint })} 
+            className={`px-4 py-2.5 rounded-2xl text-[10px] font-black flex items-center gap-2 transition-all border shadow-sm ${activePage.showBackgroundInPrint ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
+            title={activePage.showBackgroundInPrint ? "تصویر در چاپ لحاظ می‌شود" : "فقط متن چاپ می‌شود"}
+          >
+            {activePage.showBackgroundInPrint ? <ImageIcon size={14}/> : <ImageOff size={14}/>}
+            {activePage.showBackgroundInPrint ? 'سربرگ روشن' : 'سربرگ خاموش'}
+          </button>
           <button onClick={() => fileInputRef.current?.click()} className="bg-blue-600 text-white px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md"><Upload size={16} /> آپلود سربرگ</button>
           <button onClick={() => { updatePage({ bgImage: undefined }); setCanvasBg(''); showToast('تصویر حذف شد'); }} className="bg-white border border-red-100 text-red-500 px-5 py-2.5 rounded-2xl text-xs font-bold hover:bg-red-50 transition-all">حذف</button>
           <div className="h-6 w-[1px] bg-slate-200 mx-1" />
@@ -1804,7 +1973,7 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
                     <input type="range" min="0" max="360" value={selectedField.rotation} onChange={e => updateField(selectedField.id, { rotation: Number(e.target.value) })} className="w-full accent-blue-600 h-1.5 bg-blue-100 rounded-full cursor-pointer transition-all" />
                   </div>
                   <div className="grid grid-cols-3 bg-white p-1 rounded-xl shadow-sm border border-blue-100/30">
-                    {(['L', 'C', 'R'] as TextAlignment[]).map(a => <button key={a} onClick={() => updateField(selectedField.id, { alignment: a })} className={`py-2 rounded-lg text-xs font-black transition-all duration-300 ${selectedField.alignment === a ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-blue-600'}`}>{a === 'L' ? <AlignLeft size={14} className="mx-auto" /> : a === 'C' ? <AlignCenter size={14} className="mx-auto" /> : <AlignRight size={14} className="mx-auto" />}</button>)}
+                    {(['L', 'C', 'R'] as TextAlignment[]).map(a => <button key={a} onClick={() => updateField(selectedFieldId, { alignment: a })} className={`py-2 rounded-lg text-xs font-black transition-all duration-300 ${selectedField.alignment === a ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-blue-600'}`}>{a === 'L' ? <AlignLeft size={14} className="mx-auto" /> : a === 'C' ? <AlignCenter size={14} className="mx-auto" /> : <AlignRight size={14} className="mx-auto" />}</button>)}
                   </div>
                 </div>
               )}
@@ -1827,7 +1996,7 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
         <div className="flex-1 bg-slate-200/30 p-8 overflow-auto flex items-start justify-center custom-scrollbar no-print">
           <div ref={canvasRef} className="bg-white shadow-2xl relative border border-slate-200 transition-all origin-top no-print" style={{ width: activePage.paperSize === PaperSize.A4 ? '595px' : '420px', height: activePage.paperSize === PaperSize.A4 ? '842px' : '595px', backgroundImage: canvasBg ? `url(${canvasBg})` : 'none', backgroundSize: '100% 100%', imageRendering: 'high-quality' }}>
             {fields.filter(f => f.isActive).map(f => (
-              <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none group/field ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'flex-start', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
+              <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none group/field ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'flex-start', justifyItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
                 <div className={`absolute -inset-2 border-2 rounded-lg transition-all ${selectedFieldId === f.id ? 'border-blue-500 bg-blue-500/5 shadow-md' : 'border-transparent'}`} />
                 <span className={`relative font-black tracking-tight w-full leading-none break-words hyphens-auto ${selectedFieldId === f.id ? 'text-blue-700' : 'text-slate-800 opacity-60'}`} style={{ overflowWrap: 'break-word', wordBreak: 'break-word', lineHeight: 1 }}>
                   {f.label}
@@ -1842,8 +2011,13 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
   );
 };
 
-const SettingsPanel = ({ template, setTemplate, userPermissions }: { template: ContractTemplate, setTemplate: (t: any) => void, userPermissions: string[] }) => {
-  const [mainTab, setMainTab] = useState<'users' | 'boom' | 'backup'>(() => { if (userPermissions.includes('settings_boom')) return 'boom'; if (userPermissions.includes('settings_users')) return 'users'; return 'backup'; });
+const SettingsPanel = ({ template, setTemplate, userPermissions, currentUser }: { template: ContractTemplate, setTemplate: (t: any) => void, userPermissions: string[], currentUser: any }) => {
+  const isAdmin = currentUser?.username === 'admin';
+  const [mainTab, setMainTab] = useState<'users' | 'boom' | 'backup'>(() => { 
+    if (isAdmin || userPermissions.includes('settings_boom')) return 'boom'; 
+    if (userPermissions.includes('settings_users')) return 'users'; 
+    return 'backup'; 
+  });
   const [activeSubTab, setActiveSubTab] = useState<'design' | 'fields'>('design');
   const [activePage, setActivePage] = useState(1);
   const [isDesignUnlocked, setIsDesignUnlocked] = useState(false);
@@ -1851,87 +2025,241 @@ const SettingsPanel = ({ template, setTemplate, userPermissions }: { template: C
   return (
     <div className="flex flex-col h-[calc(100vh-40px)] animate-in fade-in duration-500 no-print">
       <div className="flex items-center justify-center gap-4 py-6 bg-white border-b border-slate-100 no-print">
-         {userPermissions.includes('settings_users') && <button onClick={() => setMainTab('users')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'users' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><User size={18}/> مدیریت کاربران و نقش‌ها</button>}
-         {userPermissions.includes('settings_boom') && <button onClick={() => setMainTab('boom')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'boom' ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Layers size={18}/> مدیریت سربرگ و المان‌ها</button>}
-         {userPermissions.includes('settings_backup') && <button onClick={() => setMainTab('backup')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'backup' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Database size={18}/> پشتیبان‌گیری و داده‌ها</button>}
+         {(isAdmin || userPermissions.includes('settings_users')) && <button onClick={() => setMainTab('users')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'users' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><User size={18}/> مدیریت کاربران و نقش‌ها</button>}
+         {(isAdmin || userPermissions.includes('settings_boom')) && <button onClick={() => setMainTab('boom')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'boom' ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Layers size={18}/> مدیریت سربرگ و المان‌ها</button>}
+         {(isAdmin || userPermissions.includes('settings_backup')) && <button onClick={() => setMainTab('backup')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'backup' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Database size={18}/> پشتیبان‌گیری و داده‌ها</button>}
       </div>
       <div className="flex-1 overflow-hidden no-print">
         {mainTab === 'boom' && (
           <div className="h-full">
-            {isDesignUnlocked ? (
+            {isDesignUnlocked || isAdmin ? (
               <DesktopSettings template={template} setTemplate={setTemplate} activePageNum={activePage} activeSubTab={activeSubTab} setActiveSubTab={setActiveSubTab} onPageChange={setActivePage} />
             ) : (
               <DesignGate onUnlock={() => setIsDesignUnlocked(true)} onCancel={() => setMainTab('users')} />
             )}
           </div>
         )}
-        {mainTab === 'users' && <UsersManager />}
+        {mainTab === 'users' && <UsersManager currentUser={currentUser} />}
         {mainTab === 'backup' && <BackupManager />}
       </div>
     </div>
   );
 };
 
-const ArchivePanel = ({ onEdit, perms, template }: { onEdit: (contract: any) => void, perms: string[], template: ContractTemplate }) => {
+const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { onEdit: (contract: any) => void, perms: string[], template: ContractTemplate, currentUser: any, activeFont: string }) => {
   const [contracts, setContracts] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<'all' | 'main' | 'extended'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [assignmentModal, setAssignmentModal] = useState<any>(null);
+  const [isExpiryPanelOpen, setIsExpiryPanelOpen] = useState(false);
+  
+  const isAdmin = currentUser?.username === 'admin';
+  const isStrictEmployee = currentUser?.role_id === 'employee_role';
+  
+  const canPrint = isAdmin || perms.includes('archive_print') || isStrictEmployee; // Employee MUST print assigned
+  const canEdit = isAdmin || perms.includes('archive_edit') || isStrictEmployee; // Employee MUST edit assigned
+  const canDelete = !isStrictEmployee && (isAdmin || perms.includes('archive_delete'));
 
-  useEffect(() => { fetchContracts(); }, []);
-  const fetchContracts = async () => { const { data } = await supabase.from('contracts').select('*').order('timestamp', { ascending: false }); if (data) setContracts(data); };
-  const handleDelete = async (id: string) => { if (!perms.includes('archive_delete')) return; const { error } = await supabase.from('contracts').delete().eq('id', id); if (!error) { fetchContracts(); showToast('قرارداد از بایگانی حذف شد'); } };
+  useEffect(() => { 
+    fetchContracts(); 
+    fetchUsers();
+  }, [currentUser]);
+
+  const fetchUsers = async () => {
+    const { data } = await supabase.from('users').select('*');
+    if (data) setUsers(data);
+  };
+
+  const fetchContracts = async () => { 
+    let query = supabase.from('contracts').select('*');
+    // Security: Only show assigned to employee
+    if (isStrictEmployee) {
+      query = query.eq('assigned_to', currentUser.id);
+    }
+    const { data } = await query.order('timestamp', { ascending: false }); 
+    if (data) setContracts(data); 
+  };
+
+  const handleDelete = async (id: string) => { 
+    if (!canDelete) return; 
+    if (window.confirm('آیا از حذف دائمی این رکورد اطمینان دارید؟')) {
+      const { error } = await supabase.from('contracts').delete().eq('id', id); 
+      if (!error) { fetchContracts(); showToast('قرارداد از بایگانی حذف شد'); } 
+    }
+  };
+
+  const handleAssign = async (userId: string | null) => {
+    if (!assignmentModal) return;
+    const { error } = await supabase.from('contracts').update({ assigned_to: userId }).eq('id', assignmentModal.id);
+    if (!error) {
+      showToast(userId ? 'قرارداد به کاربر ارجاع شد' : 'قرارداد از حالت ارجاع خارج شد');
+      setAssignmentModal(null);
+      fetchContracts();
+    }
+  };
+
+  const expiredContracts = useMemo(() => {
+    const now = new Date();
+    return contracts.filter(c => c.expiry_date && new Date(c.expiry_date) < now);
+  }, [contracts]);
+
+  const filteredContracts = useMemo(() => {
+    return contracts.filter(c => {
+      const matchesType = filterType === 'all' || (filterType === 'main' ? !c.is_extended : c.is_extended);
+      // For Employee, we disable the search UI, but let's keep search logic if it exists
+      const matchesSearch = !searchTerm || c.client_name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.form_data?.tazkira && c.form_data.tazkira.toLowerCase().includes(searchTerm.toLowerCase()));
+      return matchesType && matchesSearch;
+    });
+  }, [contracts, filterType, searchTerm]);
 
   return (
-    <div className="max-w-5xl mx-auto py-12 animate-in fade-in zoom-in-95 duration-700 no-print h-full overflow-y-auto custom-scrollbar">
-      <div className="flex justify-between items-center mb-10 px-4"><div><h2 className="text-3xl font-black text-slate-800 tracking-tight">بایگانی اسناد صادر شده</h2></div><div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 px-6"><Search size={18} className="text-slate-300" /><input type="text" placeholder="جستجوی سریع..." className="outline-none bg-transparent text-sm font-bold w-48" /></div></div>
-      {contracts.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 px-4 pb-20">
-          {contracts.map(contract => {
-            const clientPlate = contract.form_data?.tazkira || '---';
-            return (
-              <div key={contract.id} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 hover:shadow-xl transition-all group relative">
-                 {contract.is_extended && <div className="absolute top-4 left-4 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black z-10">تمدید شده</div>}
-                 
-                 <div className="flex justify-between items-start mb-6">
-                    <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-black">{(contract.client_name || 'N')[0]}</div>
-                    <div className="flex gap-2">
+    <div className="max-w-5xl mx-auto py-12 animate-in fade-in zoom-in-95 duration-700 no-print h-full flex flex-col">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-10 px-4 gap-6">
+        <div>
+          <h2 className="text-3xl font-black text-slate-800 tracking-tight">
+            {isStrictEmployee ? 'لیست قراردادهای ارجاعی من' : 'بایگانی هوشمند اسناد'}
+          </h2>
+          <p className="text-xs font-bold text-slate-400 mt-1">
+            {isStrictEmployee ? 'قراردادهایی که مسئولیت آن‌ها با شماست' : 'مدیریت و فیلترینگ قراردادهای ثبت شده'}
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          {!isStrictEmployee && (
+            <div className="relative">
+               <button onClick={() => setIsExpiryPanelOpen(!isExpiryPanelOpen)} className="p-3.5 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-red-500 hover:shadow-lg transition-all relative">
+                  <Bell size={20} />
+                  {expiredContracts.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">
+                      {expiredContracts.length}
+                    </span>
+                  )}
+               </button>
+               {isExpiryPanelOpen && (
+                 <div className="absolute top-full left-0 mt-3 w-72 bg-white border border-slate-100 shadow-2xl rounded-3xl z-[150] animate-in slide-in-from-top-2 overflow-hidden">
+                    <div className="bg-red-50 p-4 border-b border-red-100 flex items-center justify-between">
+                       <span className="text-[10px] font-black text-red-700 uppercase">قراردادهای منقضی شده</span>
+                       <X size={14} className="text-red-400 cursor-pointer" onClick={() => setIsExpiryPanelOpen(false)}/>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                       {expiredContracts.length > 0 ? (
+                         expiredContracts.map(c => (
+                           <div key={c.id} className="p-4 border-b border-slate-50 hover:bg-slate-50 transition-all cursor-pointer" onClick={() => { onEdit(c); setIsExpiryPanelOpen(false); }}>
+                              <p className="font-black text-xs text-slate-800 mb-1">{c.client_name}</p>
+                              <p className="text-[9px] font-bold text-red-500">منقضی شده در: {new Date(c.expiry_date).toLocaleDateString('fa-IR')}</p>
+                           </div>
+                         ))
+                       ) : (
+                         <div className="p-8 text-center text-[10px] font-bold text-slate-400 italic">هیچ قرارداد منقضی شده‌ای یافت نشد.</div>
+                       )}
+                    </div>
+                 </div>
+               )}
+            </div>
+          )}
+
+          {!isStrictEmployee && (
+            <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
+              {[
+                {id: 'all', label: 'همه'},
+                {id: 'main', label: 'اصلی'},
+                {id: 'extended', label: 'تمدیدی'}
+              ].map(t => (
+                <button key={t.id} onClick={() => setFilterType(t.id as any)} className={`px-5 py-2 rounded-xl text-[10px] font-black transition-all ${filterType === t.id ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>{t.label}</button>
+              ))}
+            </div>
+          )}
+          
+          {!isStrictEmployee && (
+            <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 px-6 flex-1 md:flex-initial">
+              <Search size={18} className="text-slate-300" />
+              <input type="text" placeholder="جستجوی پلاک یا نام..." className="outline-none bg-transparent text-sm font-bold w-full md:w-48" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pb-24">
+        {filteredContracts.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredContracts.map(contract => {
+              const clientPlate = contract.form_data?.tazkira || '---';
+              const assignedUser = users.find(u => u.id === contract.assigned_to);
+              const isExpired = contract.expiry_date && new Date(contract.expiry_date) < new Date();
+              
+              return (
+                <div key={contract.id} className={`bg-white p-8 rounded-[40px] shadow-sm border ${isExpired ? 'border-red-100 ring-2 ring-red-50/50' : 'border-slate-100'} hover:shadow-xl transition-all group relative overflow-hidden`}>
+                   {contract.is_extended && <div className="absolute top-4 left-4 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black z-10">تمدید شده</div>}
+                   {isExpired && !contract.is_extended && <div className="absolute top-4 left-4 bg-red-100 text-red-700 px-3 py-1 rounded-lg text-[10px] font-black z-10">پایان اعتبار</div>}
+                   <div className="flex justify-between items-start mb-6">
                       <div className="relative">
-                        <button onClick={() => setActiveShareId(activeShareId === contract.id ? null : contract.id)} className="text-slate-300 hover:text-emerald-500 transition-all p-2 bg-slate-50 rounded-xl">
-                           <Share2 size={20}/>
-                        </button>
-                        {activeShareId === contract.id && (
-                          <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[100] animate-in zoom-in-95 p-2 overflow-hidden">
-                             <button 
-                                onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, true); setActiveShareId(null); }}
-                                className="w-full flex items-center gap-3 p-3 hover:bg-emerald-50 text-emerald-600 rounded-xl transition-all text-right"
-                             >
-                                <MessageCircle size={18}/>
-                                <span className="text-[11px] font-black">ارسال در واتساپ</span>
-                             </button>
-                             <button 
-                                onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, false); setActiveShareId(null); }}
-                                className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 text-blue-600 rounded-xl transition-all text-right border-t border-slate-50"
-                             >
-                                <Download size={18}/>
-                                <span className="text-[11px] font-black">دانلود پی‌دی‌اف</span>
-                             </button>
+                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black ${isExpired ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>{(contract.client_name || 'N')[0]}</div>
+                        {assignedUser && (
+                          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-slate-900 border-2 border-white rounded-full flex items-center justify-center text-[8px] text-white font-black" title={`ارجاع شده به: ${assignedUser.username}`}>
+                            {assignedUser.username[0].toUpperCase()}
                           </div>
                         )}
                       </div>
-                      {perms.includes('archive_edit') && <button onClick={() => onEdit(contract)} className="text-slate-300 hover:text-amber-500 transition-all p-2 bg-slate-50 rounded-xl"><Pencil size={20}/></button>}
-                      {perms.includes('archive_print') && <button onClick={() => { onEdit(contract); setTimeout(() => window.print(), 100); }} className="text-slate-300 hover:text-blue-600 transition-all p-2 bg-slate-50 rounded-xl"><Printer size={20}/></button>}
-                      {perms.includes('archive_delete') && <button onClick={() => handleDelete(contract.id)} className="text-slate-300 hover:text-red-500 transition-all p-2 bg-slate-50 rounded-xl"><Trash2 size={20}/></button>}
-                    </div>
-                 </div>
-                 <h4 className="font-black text-xl text-slate-800 mb-2">{contract.client_name}</h4>
-                 <div className="flex flex-col gap-1">
-                    <p className="text-[10px] text-slate-400 font-bold">پلاک: {clientPlate}</p>
-                    <p className="text-[9px] text-slate-300 font-medium">ثبت شده در: {new Date(contract.timestamp).toLocaleDateString('fa-IR')}</p>
-                 </div>
+                      <div className="flex gap-2">
+                        {!isStrictEmployee && (
+                          <div className="relative">
+                            <button onClick={() => setActiveShareId(activeShareId === contract.id ? null : contract.id)} className="text-slate-300 hover:text-emerald-500 transition-all p-2 bg-slate-50 rounded-xl"><Share2 size={20}/></button>
+                            {activeShareId === contract.id && (
+                              <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[100] animate-in zoom-in-95 p-2 overflow-hidden">
+                                 <button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, true); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-emerald-50 text-emerald-600 rounded-xl transition-all text-right"><MessageCircle size={18}/><span className="text-[11px] font-black">ارسال در واتساپ</span></button>
+                                 <button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, false); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 text-blue-600 rounded-xl transition-all text-right border-t border-slate-50"><Download size={18}/><span className="text-[11px] font-black">دانلود پی‌دی‌اف</span></button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {isAdmin && <button onClick={() => setAssignmentModal(contract)} className={`p-2 rounded-xl transition-all ${contract.assigned_to ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-300 hover:text-blue-600'}`}><UserCheck size={20}/></button>}
+                        {canEdit && <button onClick={() => onEdit(contract)} className="text-slate-300 hover:text-amber-500 transition-all p-2 bg-slate-50 rounded-xl"><Pencil size={20}/></button>}
+                        {canPrint && <button onClick={() => { onEdit(contract); setTimeout(() => window.print(), 300); }} className="text-slate-300 hover:text-blue-600 transition-all p-2 bg-slate-50 rounded-xl"><Printer size={20}/></button>}
+                        {canDelete && <button onClick={() => handleDelete(contract.id)} className="text-slate-300 hover:text-red-500 transition-all p-2 bg-slate-50 rounded-xl"><Trash2 size={20}/></button>}
+                      </div>
+                   </div>
+                   <h4 className={`font-black text-xl mb-2 ${isExpired ? 'text-red-800' : 'text-slate-800'}`}>{contract.client_name}</h4>
+                   <div className="flex flex-col gap-1">
+                      <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1"><CreditCard size={12}/> پلاک: {clientPlate}</p>
+                      <p className="text-[9px] text-slate-300 font-medium flex items-center gap-1"><Clock size={12}/> {new Date(contract.timestamp).toLocaleDateString('fa-IR')}</p>
+                      {contract.expiry_date && (
+                        <p className={`text-[9px] font-black mt-1 flex items-center gap-1 ${isExpired ? 'text-red-500' : 'text-blue-400'}`}>
+                          <CalendarClock size={12}/> سررسید: {new Date(contract.expiry_date).toLocaleDateString('fa-IR')}
+                        </p>
+                      )}
+                   </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : ( 
+          <div className="text-center py-24 flex flex-col items-center gap-4">
+            <Archive size={64} className="text-slate-100" />
+            <h3 className="text-2xl font-black text-slate-300">
+              {isStrictEmployee ? 'هیچ قراردادی به شما ارجاع نشده است.' : 'هیچ قراردادی مطابق فیلتر یافت نشد.'}
+            </h3>
+          </div> 
+        )}
+      </div>
+
+      {assignmentModal && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => setAssignmentModal(null)} />
+          <div className="bg-white w-full max-w-md rounded-[48px] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 border border-white">
+            <div className="p-10 bg-slate-900 text-white flex justify-between items-center"><div><h3 className="text-2xl font-black flex items-center gap-3"><UserCheck size={24}/> ارجاع پرونده</h3><p className="text-[10px] font-bold opacity-60 mt-1">انتخاب کارمند مسئول برای قرارداد</p></div><button onClick={() => setAssignmentModal(null)} className="p-2 hover:bg-white/20 rounded-full transition-all"><X size={20}/></button></div>
+            <div className="p-8 max-h-[400px] overflow-y-auto custom-scrollbar">
+              <div className="space-y-3">
+                <button onClick={() => handleAssign(null)} className={`w-full p-5 rounded-3xl border-2 transition-all flex items-center justify-between group ${!assignmentModal.assigned_to ? 'border-blue-600 bg-blue-50' : 'border-slate-50 hover:bg-slate-50'}`}><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center"><Shield size={18} className="text-slate-400"/></div><span className="font-black text-slate-700">بدون ارجاع (عمومی)</span></div>{!assignmentModal.assigned_to && <CheckCircle2 size={20} className="text-blue-600"/>}</button>
+                {users.filter(u => u.username !== 'admin').map(user => (
+                  <button key={user.id} onClick={() => handleAssign(user.id)} className={`w-full p-5 rounded-3xl border-2 transition-all flex items-center justify-between group ${assignmentModal.assigned_to === user.id ? 'border-blue-600 bg-blue-50' : 'border-slate-50 hover:bg-slate-50'}`}><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 font-black">{user.username?.[0]?.toUpperCase()}</div><span className="font-black text-slate-700">{user.username}</span></div>{assignmentModal.assigned_to === user.id && <CheckCircle2 size={20} className="text-blue-600"/>}</button>
+                ))}
               </div>
-            );
-          })}
+            </div>
+          </div>
         </div>
-      ) : ( <div className="text-center py-24"><h3 className="text-2xl font-black text-slate-300">هنوز قراردادی ثبت نشده است.</h3></div> )}
+      )}
     </div>
   );
 };
@@ -1942,9 +2270,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('workspace');
   const [editingContract, setEditingContract] = useState<any>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [activeFont, setActiveFont] = useState(() => localStorage.getItem('asra_active_font') || 'Vazirmatn');
   const DEFAULT_TEMPLATE: ContractTemplate = { id: 'default', pages: [ { pageNumber: 1, paperSize: PaperSize.A4, fields: INITIAL_FIELDS, showBackgroundInPrint: true }, { pageNumber: 2, paperSize: PaperSize.A4, fields: [], showBackgroundInPrint: true }, { pageNumber: 3, paperSize: PaperSize.A4, fields: [], showBackgroundInPrint: true } ] };
   const [template, setTemplate] = useState<ContractTemplate>(DEFAULT_TEMPLATE);
   const [initializing, setInitializing] = useState(true);
+
+  useEffect(() => { 
+    localStorage.setItem('asra_active_font', activeFont);
+  }, [activeFont]);
 
   useEffect(() => { initializeApp(); }, []);
 
@@ -1965,7 +2298,31 @@ export default function App() {
   };
 
   const userPermissions = useMemo(() => { if (!currentUser) return []; const role = roles.find((r: any) => r.id === (currentUser.role_id || currentUser.roleId)); return role ? role.perms : []; }, [currentUser, roles]);
-  useEffect(() => { if (!initializing && currentUser && !userPermissions.includes(activeTab)) { if (userPermissions.includes('workspace')) setActiveTab('workspace'); else if (userPermissions.includes('archive')) setActiveTab('archive'); else if (userPermissions.includes('settings')) setActiveTab('settings'); } }, [userPermissions, activeTab, initializing]);
+  const isAdmin = currentUser?.username === 'admin';
+  const isStrictEmployee = currentUser?.role_id === 'employee_role';
+
+  useEffect(() => { 
+    if (!initializing && currentUser) {
+      if (isStrictEmployee) {
+        // Employee is forced to archive ONLY IF not currently editing something
+        if (!editingContract && activeTab !== 'archive' && activeTab !== 'workspace') {
+          setActiveTab('archive');
+        }
+      } else if (!isAdmin) {
+        // Logic for custom roles:
+        // 1. If the current active tab is NOT in their permission list
+        if (!userPermissions.includes(activeTab)) {
+          // 2. Redirect them to the first tab they DO have access to
+          if (userPermissions.includes('workspace')) setActiveTab('workspace'); 
+          else if (userPermissions.includes('archive')) setActiveTab('archive'); 
+          else if (userPermissions.includes('accounting')) setActiveTab('accounting');
+          else if (userPermissions.includes('reports')) setActiveTab('reports');
+          else if (userPermissions.includes('settings')) setActiveTab('settings');
+        }
+      } 
+    }
+  }, [userPermissions, activeTab, initializing, isAdmin, isStrictEmployee, currentUser, editingContract]);
+
   const handleLogin = (user: any) => { setCurrentUser(user); localStorage.setItem('asra_gps_session_v2', JSON.stringify(user)); showToast(`خوش آمدید، ${user.username}`); };
   const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('asra_gps_session_v2'); };
 
@@ -1974,17 +2331,37 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen bg-[#FDFDFD] font-sans overflow-hidden select-none" dir="rtl">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userPermissions={userPermissions} onLogout={handleLogout} />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} userPermissions={userPermissions} onLogout={handleLogout} currentUser={currentUser} />
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative no-print">
         <div className="flex-1 overflow-hidden h-full">
-          {activeTab === 'workspace' && <Workspace template={template} editData={editingContract} onEditCancel={() => setEditingContract(null)} perms={userPermissions} formData={formData} setFormData={setFormData} />}
-          {activeTab === 'settings' && <SettingsPanel template={template} setTemplate={setTemplate} userPermissions={userPermissions} />}
-          {activeTab === 'archive' && <ArchivePanel onEdit={(c) => { setEditingContract(c); setActiveTab('workspace'); }} perms={userPermissions} template={template} />}
-          {activeTab === 'accounting' && <AccountingPanel perms={userPermissions} />}
+          {activeTab === 'workspace' && (
+            <Workspace 
+              template={template} 
+              editData={editingContract} 
+              onEditCancel={() => { setEditingContract(null); if (isStrictEmployee) setActiveTab('archive'); }} 
+              perms={userPermissions} 
+              formData={formData} 
+              setFormData={setFormData} 
+              currentUser={currentUser} 
+              activeFont={activeFont}
+              setActiveFont={setActiveFont}
+            />
+          )}
+          {activeTab === 'settings' && <SettingsPanel template={template} setTemplate={setTemplate} userPermissions={userPermissions} currentUser={currentUser} />}
+          {activeTab === 'archive' && (
+            <ArchivePanel 
+              onEdit={(c) => { setEditingContract(c); setActiveTab('workspace'); }} 
+              perms={userPermissions} 
+              template={template} 
+              currentUser={currentUser} 
+              activeFont={activeFont}
+            />
+          )}
+          {activeTab === 'accounting' && <AccountingPanel perms={userPermissions} currentUser={currentUser} />}
           {activeTab === 'reports' && <ReportsPanel />}
         </div>
       </main>
-      <PrintLayout template={template} formData={formData} />
+      <PrintLayout template={template} formData={formData} activeFont={activeFont} />
       <Toast />
       <style>{`
         @font-face { font-family: 'Vazirmatn'; font-display: swap; }
