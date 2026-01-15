@@ -7,7 +7,7 @@ import ReactDOM from 'react-dom';
 import { supabase } from './lib/supabase';
 
 // --- Local Storage Engine (IndexedDB) ---
-const DB_NAME = 'AsraCache';
+const DB_NAME = 'AsraCache_v3';
 const STORE_NAME = 'images';
 
 const initDB = (): Promise<IDBDatabase> => {
@@ -19,11 +19,41 @@ const initDB = (): Promise<IDBDatabase> => {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(undefined as any);
+    request.onerror = () => reject(request.error);
   });
 };
 
-const cacheImage = async (url: string): Promise<string> => {
+// Smart Compressor: Reduces size using canvas without losing visual clarity
+const compressImage = async (file: File): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject('Canvas context failed');
+
+        // Maintain original resolution for clarity
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        // Export as WebP with high quality (0.8-0.9 is perfect balance)
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject('Compression failed'),
+          'image/webp',
+          0.85
+        );
+      };
+    };
+    reader.onerror = (e) => reject(e);
+  });
+};
+
+const cacheImage = async (url: string, forceRefresh = false): Promise<string> => {
   if (!url) return '';
   try {
     const db = await initDB();
@@ -35,15 +65,16 @@ const cacheImage = async (url: string): Promise<string> => {
       req.onerror = () => resolve(undefined);
     });
 
-    if (cached) return URL.createObjectURL(cached);
+    if (cached && !forceRefresh) return URL.createObjectURL(cached);
 
+    // Fetch in background with CORS
     const response = await fetch(url, { mode: 'cors', cache: 'no-cache' });
     const blob = await response.blob();
     const writeTx = db.transaction(STORE_NAME, 'readwrite');
     writeTx.objectStore(STORE_NAME).put(blob, url);
     return URL.createObjectURL(blob);
   } catch (e) {
-    console.warn('Caching failed for:', url, e);
+    console.warn('Caching logic failed for:', url, e);
     return url;
   }
 };
@@ -709,7 +740,7 @@ const Sidebar = ({ activeTab, setActiveTab, userPermissions, onLogout, currentUs
     if (isAdmin) return true;
     // Priority 2: System Employee role is forced to specific menus
     if (isStrictEmployee) return item.id === 'archive' || item.id === 'workspace';
-    // Priority 3: Custom roles see what is checked in their permissions
+    // Priority 3: Custom roles see what is checked in their permissions (checkboxes)
     return userPermissions.includes(item.perm);
   });
 
@@ -1883,6 +1914,7 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [newField, setNewField] = useState({ label: '', fontSize: 14, width: 150, alignment: 'R' as TextAlignment, isDropdown: false, optionsStr: '' });
   const [canvasBg, setCanvasBg] = useState<string>('');
+  const [uploading, setUploading] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pages = template.pages || [];
@@ -1907,7 +1939,51 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
   const updateField = (id: string, updates: Partial<ContractField>) => setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: fields.map(f => f.id === id ? { ...f, ...updates } : f) } : p) });
   const handleAddField = () => { if (!newField.label) { showToast('نام المان نمی‌تواند خالی باشد'); return; } const id = Date.now().toString(); const options = newField.isDropdown ? newField.optionsStr.split(/[,،\n]/).map(o => o.trim()).filter(Boolean) : undefined; const field: ContractField = { id, label: newField.label, key: `f_${id}`, isActive: true, x: 40, y: 40, width: newField.width, height: 30, fontSize: 14, rotation: 0, alignment: newField.alignment, isDropdown: newField.isDropdown, options: options }; setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: [...fields, field] } : p) }); setNewField({ label: '', fontSize: 14, width: 150, alignment: 'R', isDropdown: false, optionsStr: '' }); showToast('المان جدید به بوم اضافه شد'); };
   const removeField = (id: string) => { setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: fields.filter(f => f.id !== id) } : p) }); showToast('المان حذف شد'); };
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) { if (activePage.bgImage) { try { const oldPath = activePage.bgImage.split('/').pop(); if (oldPath) await supabase.storage.from('letterheads').remove([`headers/${oldPath}`]); } catch (e) { console.error('Cleanup failed:', e); } } const fileExt = file.name.split('.').pop(); const fileName = `${Math.random()}.${fileExt}`; const filePath = `headers/${fileName}`; const { error: uploadError } = await supabase.storage.from('letterheads').upload(filePath, file); if (!uploadError) { const { data: { publicUrl } } = supabase.storage.from('letterheads').getPublicUrl(filePath); const localUrl = URL.createObjectURL(file); setCanvasBg(localUrl); updatePage({ bgImage: publicUrl }); const db = await initDB(); const tx = db.transaction(STORE_NAME, 'readwrite'); tx.objectStore(STORE_NAME).put(file, publicUrl); showToast('تصویر سربرگ جدید جایگزین و کش شد'); } } };
+  
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { 
+    const file = e.target.files?.[0]; 
+    if (file) { 
+      setUploading(true);
+      showToast('در حال بهینه‌سازی و آپلود تصویر...');
+      
+      try {
+        // Step 1: Client-side compression
+        const compressedBlob = await compressImage(file);
+        
+        // Step 2: Cleanup old image
+        if (activePage.bgImage) { 
+          try { 
+            const oldPath = activePage.bgImage.split('/').pop(); 
+            if (oldPath) await supabase.storage.from('letterheads').remove([`headers/${oldPath}`]); 
+          } catch (e) { console.error('Cleanup failed:', e); } 
+        } 
+        
+        // Step 3: Upload compressed WebP
+        const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.webp`; 
+        const filePath = `headers/${fileName}`; 
+        const { error: uploadError } = await supabase.storage.from('letterheads').upload(filePath, compressedBlob, { contentType: 'image/webp' }); 
+        
+        if (!uploadError) { 
+          const { data: { publicUrl } } = supabase.storage.from('letterheads').getPublicUrl(filePath); 
+          const localUrl = URL.createObjectURL(compressedBlob); 
+          setCanvasBg(localUrl); 
+          updatePage({ bgImage: publicUrl }); 
+          
+          // Force cache update
+          const db = await initDB(); 
+          const tx = db.transaction(STORE_NAME, 'readwrite'); 
+          tx.objectStore(STORE_NAME).put(compressedBlob, publicUrl); 
+          showToast('تصویر با موفقیت بهینه و آپلود شد'); 
+        } 
+      } catch (err) {
+        showToast('خطا در فرآیند آپلود تصویر');
+        console.error(err);
+      } finally {
+        setUploading(false);
+      }
+    } 
+  };
+
   const handleDrag = (e: React.MouseEvent, id: string) => { if (!canvasRef.current) return; const canvasRect = canvasRef.current.getBoundingClientRect(); setSelectedFieldId(id); const onMouseMove = (m: MouseEvent) => { const x = ((m.clientX - canvasRect.left) / canvasRect.width) * 100; const y = ((m.clientY - canvasRect.top) / canvasRect.height) * 100; updateField(id, { x: Math.max(0, Math.min(98, x)), y: Math.max(0, Math.min(98, y)) }); }; const onMouseUp = () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); }; document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp); };
 
   return (
@@ -1930,7 +2006,9 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
             {activePage.showBackgroundInPrint ? <ImageIcon size={14}/> : <ImageOff size={14}/>}
             {activePage.showBackgroundInPrint ? 'سربرگ روشن' : 'سربرگ خاموش'}
           </button>
-          <button onClick={() => fileInputRef.current?.click()} className="bg-blue-600 text-white px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md"><Upload size={16} /> آپلود سربرگ</button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className={`bg-blue-600 text-white px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md ${uploading ? 'opacity-50 cursor-wait' : ''}`}>
+             <Upload size={16} /> {uploading ? 'در حال آپلود...' : 'آپلود سربرگ'}
+          </button>
           <button onClick={() => { updatePage({ bgImage: undefined }); setCanvasBg(''); showToast('تصویر حذف شد'); }} className="bg-white border border-red-100 text-red-500 px-5 py-2.5 rounded-2xl text-xs font-bold hover:bg-red-50 transition-all">حذف</button>
           <div className="h-6 w-[1px] bg-slate-200 mx-1" />
           <div className="flex bg-slate-100 p-1 rounded-2xl">
@@ -2049,6 +2127,7 @@ const SettingsPanel = ({ template, setTemplate, userPermissions, currentUser }: 
 const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { onEdit: (contract: any) => void, perms: string[], template: ContractTemplate, currentUser: any, activeFont: string }) => {
   const [contracts, setContracts] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [clients, setClients] = useState<ClientProfile[]>([]);
   const [activeShareId, setActiveShareId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'main' | 'extended'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -2065,11 +2144,17 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
   useEffect(() => { 
     fetchContracts(); 
     fetchUsers();
+    fetchClients();
   }, [currentUser]);
 
   const fetchUsers = async () => {
     const { data } = await supabase.from('users').select('*');
     if (data) setUsers(data);
+  };
+
+  const fetchClients = async () => {
+    const { data } = await supabase.from('clients').select('*');
+    if (data) setClients(data);
   };
 
   const fetchContracts = async () => { 
@@ -2108,11 +2193,19 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
   const filteredContracts = useMemo(() => {
     return contracts.filter(c => {
       const matchesType = filterType === 'all' || (filterType === 'main' ? !c.is_extended : c.is_extended);
-      // For Employee, we disable the search UI, but let's keep search logic if it exists
-      const matchesSearch = !searchTerm || c.client_name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.form_data?.tazkira && c.form_data.tazkira.toLowerCase().includes(searchTerm.toLowerCase()));
+      
+      // Get the original plate (tazkira) from the client profile for searching and showing
+      const clientProfile = clients.find(cl => cl.id === c.client_id);
+      const originalPlate = clientProfile?.tazkira || '';
+      
+      const searchStr = searchTerm.toLowerCase().trim();
+      const matchesSearch = !searchStr || 
+                            c.client_name.toLowerCase().includes(searchStr) || 
+                            originalPlate.toLowerCase().includes(searchStr);
+                            
       return matchesType && matchesSearch;
     });
-  }, [contracts, filterType, searchTerm]);
+  }, [contracts, filterType, searchTerm, clients]);
 
   return (
     <div className="max-w-5xl mx-auto py-12 animate-in fade-in zoom-in-95 duration-700 no-print h-full flex flex-col">
@@ -2172,12 +2265,10 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
             </div>
           )}
           
-          {!isStrictEmployee && (
-            <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 px-6 flex-1 md:flex-initial">
-              <Search size={18} className="text-slate-300" />
-              <input type="text" placeholder="جستجوی پلاک یا نام..." className="outline-none bg-transparent text-sm font-bold w-full md:w-48" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-            </div>
-          )}
+          <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 px-6 flex-1 md:flex-initial">
+            <Search size={18} className="text-slate-300" />
+            <input type="text" placeholder="جستجوی پلاک یا نام..." className="outline-none bg-transparent text-sm font-bold w-full md:w-48" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          </div>
         </div>
       </div>
 
@@ -2185,7 +2276,10 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
         {filteredContracts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredContracts.map(contract => {
-              const clientPlate = contract.form_data?.tazkira || '---';
+              // Address the plate number EXACTLY from the client profile
+              const clientProfile = clients.find(cl => cl.id === contract.client_id);
+              const clientPlate = clientProfile?.tazkira || '---';
+              
               const assignedUser = users.find(u => u.id === contract.assigned_to);
               const isExpired = contract.expiry_date && new Date(contract.expiry_date) < new Date();
               
@@ -2222,7 +2316,7 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
                    </div>
                    <h4 className={`font-black text-xl mb-2 ${isExpired ? 'text-red-800' : 'text-slate-800'}`}>{contract.client_name}</h4>
                    <div className="flex flex-col gap-1">
-                      <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1"><CreditCard size={12}/> پلاک: {clientPlate}</p>
+                      <p className="text-[10px] text-slate-400 font-black flex items-center gap-1"><CreditCard size={12}/> پلاک: {clientPlate}</p>
                       <p className="text-[9px] text-slate-300 font-medium flex items-center gap-1"><Clock size={12}/> {new Date(contract.timestamp).toLocaleDateString('fa-IR')}</p>
                       {contract.expiry_date && (
                         <p className={`text-[9px] font-black mt-1 flex items-center gap-1 ${isExpired ? 'text-red-500' : 'text-blue-400'}`}>
@@ -2284,17 +2378,31 @@ export default function App() {
   const initializeApp = async () => {
     const savedSession = localStorage.getItem('asra_gps_session_v2');
     if (savedSession) setCurrentUser(JSON.parse(savedSession));
+    
+    // Core Data Fetch - Must be fast
     const { data: rData } = await supabase.from('roles').select('*');
     if (rData) setRoles(rData);
+    
     const { data: sData } = await supabase.from('settings').select('*').eq('key', 'contract_template');
     let activeTemplate = DEFAULT_TEMPLATE;
     if (sData && sData.length > 0) {
       const dbTemplate = sData[0].value;
       activeTemplate = { ...DEFAULT_TEMPLATE, ...dbTemplate, pages: dbTemplate.pages && dbTemplate.pages.length > 0 ? dbTemplate.pages : DEFAULT_TEMPLATE.pages };
-    } else { await supabase.from('settings').upsert([{ key: 'contract_template', value: DEFAULT_TEMPLATE }]); }
+    }
     setTemplate(activeTemplate);
-    if (activeTemplate.pages) { for (const p of activeTemplate.pages) { if (p.bgImage) { try { await cacheImage(p.bgImage); } catch (err) { console.error('Initial sync failed', p.pageNumber, err); } } } }
+    
+    // APP IS NOW READY FOR INTERACTION
     setInitializing(false);
+
+    // BACKGROUND PREFETCHING - Does not block the UI
+    if (activeTemplate.pages) {
+      activeTemplate.pages.forEach(p => {
+        if (p.bgImage) {
+          // Fire and forget - will populate IndexedDB in background
+          cacheImage(p.bgImage).catch(console.error);
+        }
+      });
+    }
   };
 
   const userPermissions = useMemo(() => { if (!currentUser) return []; const role = roles.find((r: any) => r.id === (currentUser.role_id || currentUser.roleId)); return role ? role.perms : []; }, [currentUser, roles]);
@@ -2304,15 +2412,11 @@ export default function App() {
   useEffect(() => { 
     if (!initializing && currentUser) {
       if (isStrictEmployee) {
-        // Employee is forced to archive ONLY IF not currently editing something
         if (!editingContract && activeTab !== 'archive' && activeTab !== 'workspace') {
           setActiveTab('archive');
         }
       } else if (!isAdmin) {
-        // Logic for custom roles:
-        // 1. If the current active tab is NOT in their permission list
-        if (!userPermissions.includes(activeTab)) {
-          // 2. Redirect them to the first tab they DO have access to
+        if (userPermissions.length > 0 && !userPermissions.includes(activeTab)) {
           if (userPermissions.includes('workspace')) setActiveTab('workspace'); 
           else if (userPermissions.includes('archive')) setActiveTab('archive'); 
           else if (userPermissions.includes('accounting')) setActiveTab('accounting');
@@ -2326,7 +2430,13 @@ export default function App() {
   const handleLogin = (user: any) => { setCurrentUser(user); localStorage.setItem('asra_gps_session_v2', JSON.stringify(user)); showToast(`خوش آمدید، ${user.username}`); };
   const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('asra_gps_session_v2'); };
 
-  if (initializing) return <div className="fixed inset-0 bg-slate-50 flex items-center justify-center font-black text-slate-400">در حال بارگذاری سیستم...</div>;
+  if (initializing) return (
+    <div className="fixed inset-0 bg-slate-900 flex items-center justify-center flex-col gap-6">
+       <div className="animate-bounce bg-white p-4 rounded-3xl shadow-2xl"><AsraLogo size={60} /></div>
+       <div className="text-white font-black text-sm animate-pulse">در حال آماده‌سازی میز کار...</div>
+    </div>
+  );
+  
   if (!currentUser) return <LoginForm onLogin={handleLogin} />;
 
   return (
