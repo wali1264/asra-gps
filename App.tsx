@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Layout, FileText, Settings, Archive, User, Search, Printer, Plus, Save, Move, RotateCw, Upload, Trash2, AlignLeft, AlignCenter, AlignRight, Grid, List, Layers, PlusCircle, ChevronDown, Files, UserPlus, X, ChevronLeft, CheckCircle2, Type, Maximize2, Bell, Pencil, ShieldCheck, Database, Download, FileJson, Key, Check, Lock, LogOut, UserCheck, Shield, Eye, EyeOff, Repeat, Phone, CreditCard, UserCircle, ZoomIn, ZoomOut, ChevronUp, Info, BookMarked, Copy, Wallet, ArrowUpCircle, ArrowDownCircle, Calculator, TrendingUp, TrendingDown, Clock, Users, Share2, MessageCircle, BarChart3, Calendar, Filter, UserPlus2, Forward, CalendarClock, Image as ImageIcon, ImageOff } from 'lucide-react';
+import { Layout, FileText, Settings, Archive, User, Search, Printer, Plus, Save, Move, RotateCw, Upload, Trash2, AlignLeft, AlignCenter, AlignRight, Grid, List, Layers, PlusCircle, ChevronDown, Files, UserPlus, X, ChevronLeft, CheckCircle2, Type, Maximize2, Bell, Pencil, ShieldCheck, Database, Download, FileJson, Key, Check, Lock, LogOut, UserCheck, Shield, Eye, EyeOff, Repeat, Phone, CreditCard, UserCircle, ZoomIn, ZoomOut, ChevronUp, Info, BookMarked, Copy, Wallet, ArrowUpCircle, ArrowDownCircle, Calculator, TrendingUp, TrendingDown, Clock, Users, Share2, MessageCircle, BarChart3, Calendar, Filter, UserPlus2, Forward, CalendarClock, ImageIcon, ImageOff } from 'lucide-react';
 import { PaperSize, ContractField, ContractTemplate, TextAlignment, ContractPage, ClientProfile } from './types';
 import { INITIAL_FIELDS } from './constants';
 import ReactDOM from 'react-dom';
@@ -2557,9 +2557,28 @@ export default function App() {
       <Toast />
       <style>{`
         @font-face { font-family: 'Vazirmatn'; font-display: swap; }
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 20px; }
+        
+        /* Modern & Accessible Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { 
+          width: 12px; /* Increased width for better mouse targeting */
+        }
+        .custom-scrollbar::-webkit-scrollbar-track { 
+          background: #f8fafc; /* Very light background for the track */
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb { 
+          background: #cbd5e1; /* Slate-300: clearly visible but professional */
+          background-clip: padding-box;
+          border: 3px solid #f8fafc; /* Creates a clean gap effect */
+          border-radius: 10px;
+          transition: background 0.2s ease;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { 
+          background: #94a3b8; /* Slate-400: darker on hover for feedback */
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:active {
+          background: #64748b; /* Slate-500: even darker when dragging */
+        }
       `}</style>
     </div>
   );
