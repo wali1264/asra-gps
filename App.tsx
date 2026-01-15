@@ -421,7 +421,7 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
   };
 
   const deleteTransaction = async (id: string) => {
-    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    const { error = null } = await supabase.from('transactions').delete().eq('id', id);
     if (!error) {
       showToast('رکورد حذف شد');
       if (selectedClient) fetchTransactions(selectedClient.id);
@@ -654,7 +654,7 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
       fieldEl.style.fontWeight = '900';
       fieldEl.style.color = 'black';
       fieldEl.style.textAlign = field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center';
-      fieldEl.style.transform = `rotate(${field.rotation}deg)`;
+      fieldEl.style.transform = `translateY(-50%) rotate(${field.rotation}deg)`;
       fieldEl.style.whiteSpace = 'nowrap';
       fieldEl.innerText = formData[field.key] || '';
       pageEl.appendChild(fieldEl);
@@ -748,7 +748,7 @@ const PrintLayout = ({ template, formData, activeFont }: { template: ContractTem
                   left: `${field.x}%`,
                   top: `${field.y}%`,
                   width: `${field.width}px`,
-                  transform: `rotate(${field.rotation}deg)`,
+                  transform: `translateY(-50%) rotate(${field.rotation}deg)`,
                   fontSize: `${field.fontSize}px`,
                   textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
                   justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
@@ -839,7 +839,7 @@ const LoginForm = ({ onLogin }: { onLogin: (user: any) => void }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { data, error: dbError } = await supabase
+    const { data, error: dbError = null } = await supabase
       .from('users')
       .select('*')
       .eq('username', username)
@@ -981,7 +981,7 @@ const VisualCanvasPage = ({
 
   return (
     <div 
-      className="relative mx-auto bg-white shadow-2xl border border-slate-200 transition-all duration-500 origin-top overflow-hidden"
+      className="relative mx-auto bg-white shadow-2xl border border-slate-200 transition-all duration-500 origin-top overflow-hidden box-border"
       style={{ 
         width: `${baseWidth * zoom}px`, 
         height: `${baseHeight * zoom}px`,
@@ -1005,9 +1005,11 @@ const VisualCanvasPage = ({
             top: `${field.y}%`,
             width: `${field.width * zoom}px`,
             height: `${(field.height || 30) * zoom}px`,
-            transform: `rotate(${field.rotation}deg)`,
+            // KEY FIX: Anchoring Y coordinates to text baseline using negative 50% translate.
+            // This ensures Y refers to the center of the text, matching print behavior perfectly.
+            transform: `translateY(-50%) rotate(${field.rotation}deg)`,
             display: 'flex',
-            alignItems: 'flex-start',
+            alignItems: 'center', 
             justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
           }}
           onClick={(e) => {
@@ -1025,7 +1027,7 @@ const VisualCanvasPage = ({
           
           {field.isDropdown ? (
             <div 
-              className="w-full h-full flex items-start gap-1 overflow-hidden"
+              className="w-full h-full flex items-center gap-1 overflow-hidden"
               style={{
                 justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center',
               }}
@@ -1038,12 +1040,12 @@ const VisualCanvasPage = ({
                   textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
                   lineHeight: 1,
                   padding: 0,
-                  marginTop: 0
+                  margin: 0
                 }}
                >
                  {formData[field.key] || (field.options?.[0] || '')}
                </span>
-               <ChevronDown size={12 * zoom} className="text-slate-400 flex-shrink-0 mt-0.5" />
+               <ChevronDown size={12 * zoom} className="text-slate-400 flex-shrink-0" />
             </div>
           ) : (
             <input
@@ -1061,9 +1063,9 @@ const VisualCanvasPage = ({
                 fontSize: `${field.fontSize * zoom}px`,
                 fontFamily: activeFont || 'Vazirmatn',
                 textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center',
-                lineHeight: 1,
+                lineHeight: 1, 
                 height: '100%',
-                padding: 0,
+                padding: 0, 
                 boxSizing: 'border-box',
                 appearance: 'none',
                 WebkitAppearance: 'none'
@@ -1149,7 +1151,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
         const newFormData = { ...formData };
         let hasChanges = false;
         const today = new Date().toLocaleDateString('fa-IR');
-        const { count, error: countError } = await supabase.from('contracts').select('*', { count: 'exact', head: true });
+        const { count, error: countError = null } = await supabase.from('contracts').select('*', { count: 'exact', head: true });
         const serialNum = countError ? '1' : ((count || 0) + 1).toString();
 
         (template.pages || []).forEach(page => {
@@ -1793,8 +1795,8 @@ const UsersManager = ({ currentUser }: { currentUser: any }) => {
   }, []);
 
   const fetchData = async () => {
-    const { data: u } = await supabase.from('users').select('*');
-    const { data: r } = await supabase.from('roles').select('*');
+    const { data: u = [] } = await supabase.from('users').select('*');
+    const { data: r = [] } = await supabase.from('roles').select('*');
     if (u) setUsers(u);
     if (r) setRoles(r);
   };
@@ -1936,11 +1938,11 @@ const UsersManager = ({ currentUser }: { currentUser: any }) => {
 
 const BackupManager = () => {
   const handleExport = async () => {
-    const { data: t } = await supabase.from('settings').select('*');
-    const { data: c } = await supabase.from('clients').select('*');
-    const { data: a } = await supabase.from('contracts').select('*');
-    const { data: u } = await supabase.from('users').select('*');
-    const { data: r } = await supabase.from('roles').select('*');
+    const { data: t = [] } = await supabase.from('settings').select('*');
+    const { data: c = [] } = await supabase.from('clients').select('*');
+    const { data: a = [] } = await supabase.from('contracts').select('*');
+    const { data: u = [] } = await supabase.from('users').select('*');
+    const { data: r = [] } = await supabase.from('roles').select('*');
     const data = { settings: t, clients: c, contracts: a, users: u, roles: r, version: '2.0.0', exportDate: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2014,7 +2016,7 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
   }, [activePage.bgImage, activePageNum]);
 
   const updatePage = (updates: Partial<ContractPage>) => setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, ...updates } : p) });
-  const handleSaveTemplate = async () => { const { error } = await supabase.from('settings').upsert([{ key: 'contract_template', value: template }]); if (!error) showToast('قالب طراحی در پایگاه داده تثبیت شد'); };
+  const handleSaveTemplate = async () => { const { error = null } = await supabase.from('settings').upsert([{ key: 'contract_template', value: template }]); if (!error) showToast('قالب طراحی در پایگاه داده تثبیت شد'); };
   const updateField = (id: string, updates: Partial<ContractField>) => setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: fields.map(f => f.id === id ? { ...f, ...updates } : f) } : p) });
   const handleAddField = () => { if (!newField.label) { showToast('نام المان نمی‌تواند خالی باشد'); return; } const id = Date.now().toString(); const options = newField.isDropdown ? newField.optionsStr.split(/[,،\n]/).map(o => o.trim()).filter(Boolean) : undefined; const field: ContractField = { id, label: newField.label, key: `f_${id}`, isActive: true, x: 40, y: 40, width: newField.width, height: 30, fontSize: 14, rotation: 0, alignment: newField.alignment, isDropdown: newField.isDropdown, options: options }; setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: [...fields, field] } : p) }); setNewField({ label: '', fontSize: 14, width: 150, alignment: 'R', isDropdown: false, optionsStr: '' }); showToast('المان جدید به بوم اضافه شد'); };
   const removeField = (id: string) => { setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: fields.filter(f => f.id !== id) } : p) }); showToast('المان حذف شد'); };
@@ -2153,7 +2155,8 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
         <div className="flex-1 bg-slate-200/30 p-8 overflow-auto flex items-start justify-center custom-scrollbar no-print">
           <div ref={canvasRef} className="bg-white shadow-2xl relative border border-slate-200 transition-all origin-top no-print" style={{ width: activePage.paperSize === PaperSize.A4 ? '595px' : '420px', height: activePage.paperSize === PaperSize.A4 ? '842px' : '595px', backgroundImage: canvasBg ? `url(${canvasBg})` : 'none', backgroundSize: '100% 100%', imageRendering: 'high-quality' }}>
             {fields.filter(f => f.isActive).map(f => (
-              <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none group/field ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'flex-start', justifyItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
+              <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none group/field ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `translateY(-50%) rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'center', 
+              justifyItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
                 <div className={`absolute -inset-2 border-2 rounded-lg transition-all ${selectedFieldId === f.id ? 'border-blue-500 bg-blue-500/5 shadow-md' : 'border-transparent'}`} />
                 <span className={`relative font-black tracking-tight w-full leading-none break-words hyphens-auto ${selectedFieldId === f.id ? 'text-blue-700' : 'text-slate-800 opacity-60'}`} style={{ overflowWrap: 'break-word', wordBreak: 'break-word', lineHeight: 1 }}>
                   {f.label}
@@ -2227,12 +2230,12 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
   }, [currentUser]);
 
   const fetchUsers = async () => {
-    const { data } = await supabase.from('users').select('*');
+    const { data = [] } = await supabase.from('users').select('*');
     if (data) setUsers(data);
   };
 
   const fetchClients = async () => {
-    const { data } = await supabase.from('clients').select('*');
+    const { data = [] } = await supabase.from('clients').select('*');
     if (data) setClients(data);
   };
 
@@ -2242,21 +2245,21 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
     if (isStrictEmployee) {
       query = query.eq('assigned_to', currentUser.id);
     }
-    const { data } = await query.order('timestamp', { ascending: false }); 
+    const { data = [] } = await query.order('timestamp', { ascending: false }); 
     if (data) setContracts(data); 
   };
 
   const handleDelete = async (id: string) => { 
     if (!canDelete) return; 
     if (window.confirm('آیا از حذف دائمی این رکورد اطمینان دارید؟')) {
-      const { error } = await supabase.from('contracts').delete().eq('id', id); 
+      const { error = null } = await supabase.from('contracts').delete().eq('id', id); 
       if (!error) { fetchContracts(); showToast('قرارداد از بایگانی حذف شد'); } 
     }
   };
 
   const handleAssign = async (userId: string | null) => {
     if (!assignmentModal) return;
-    const { error } = await supabase.from('contracts').update({ assigned_to: userId }).eq('id', assignmentModal.id);
+    const { error = null } = await supabase.from('contracts').update({ assigned_to: userId }).eq('id', assignmentModal.id);
     if (!error) {
       showToast(userId ? 'قرارداد به کاربر ارجاع شد' : 'قرارداد از حالت ارجاع خارج شد');
       setAssignmentModal(null);
@@ -2459,10 +2462,10 @@ export default function App() {
     if (savedSession) setCurrentUser(JSON.parse(savedSession));
     
     // Core Data Fetch - Must be fast
-    const { data: rData } = await supabase.from('roles').select('*');
+    const { data: rData = [] } = await supabase.from('roles').select('*');
     if (rData) setRoles(rData);
     
-    const { data: sData } = await supabase.from('settings').select('*').eq('key', 'contract_template');
+    const { data: sData = [] } = await supabase.from('settings').select('*').eq('key', 'contract_template');
     let activeTemplate = DEFAULT_TEMPLATE;
     if (sData && sData.length > 0) {
       const dbTemplate = sData[0].value;
