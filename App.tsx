@@ -79,6 +79,48 @@ const cacheImage = async (url: string, forceRefresh = false): Promise<string> =>
   }
 };
 
+// --- Professional Printing Engine ---
+const triggerProfessionalPrint = async () => {
+  showToast('در حال آماده‌سازی نهایی برای چاپ...');
+  
+  // 1. Identify all background images in the print layer
+  const printLayer = document.querySelector('.print-root-layer');
+  if (!printLayer) return;
+
+  const images = Array.from(printLayer.querySelectorAll('.print-page-unit'))
+    .map(el => {
+      const style = window.getComputedStyle(el);
+      const bg = style.backgroundImage;
+      if (bg && bg !== 'none') {
+        const url = bg.replace(/url\(['"]?(.*?)['"]?\)/, '$1');
+        return url;
+      }
+      return null;
+    })
+    .filter(Boolean) as string[];
+
+  // 2. Pre-load all images to ensure browser has them ready in memory
+  try {
+    await Promise.all(images.map(url => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.src = url;
+        img.onload = resolve;
+        img.onerror = resolve; // Continue even if one fails
+      });
+    }));
+
+    // 3. Small buffer for layout calculations
+    await new Promise(resolve => setTimeout(resolve, 350));
+
+    // 4. Trigger browser print dialog
+    window.print();
+  } catch (err) {
+    console.error('Print prep failed', err);
+    window.print(); // Fallback to direct print
+  }
+};
+
 const AsraLogo = ({ size = 32 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
     <ellipse cx="50" cy="55" rx="45" ry="15" stroke="#0072BC" strokeWidth="4" />
@@ -1721,7 +1763,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
                     </button>
                   )}
                   <button 
-                    onClick={() => window.print()} 
+                    onClick={triggerProfessionalPrint} 
                     className="flex-1 bg-slate-900 text-white py-6 rounded-[28px] font-black text-lg flex items-center justify-center gap-4 hover:bg-black hover:-translate-y-1 transition-all shadow-xl active:scale-95"
                   >
                     <Printer size={24}/> چاپ سند
@@ -2347,7 +2389,7 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
                         )}
                         {isAdmin && <button onClick={() => setAssignmentModal(contract)} className={`p-2 rounded-xl transition-all ${contract.assigned_to ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-300 hover:text-blue-600'}`}><UserCheck size={20}/></button>}
                         {canEdit && <button onClick={() => onEdit(contract)} className="text-slate-300 hover:text-amber-500 transition-all p-2 bg-slate-50 rounded-xl"><Pencil size={20}/></button>}
-                        {canPrint && <button onClick={() => { onEdit(contract); setTimeout(() => window.print(), 300); }} className="text-slate-300 hover:text-blue-600 transition-all p-2 bg-slate-50 rounded-xl"><Printer size={20}/></button>}
+                        {canPrint && <button onClick={() => { onEdit(contract); triggerProfessionalPrint(); }} className="text-slate-300 hover:text-blue-600 transition-all p-2 bg-slate-50 rounded-xl"><Printer size={20}/></button>}
                         {canDelete && <button onClick={() => handleDelete(contract.id)} className="text-slate-300 hover:text-red-500 transition-all p-2 bg-slate-50 rounded-xl"><Trash2 size={20}/></button>}
                       </div>
                    </div>
