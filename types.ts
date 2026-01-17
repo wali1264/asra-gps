@@ -33,6 +33,7 @@ export interface ContractPage {
 export interface ContractTemplate {
   id: string;
   pages: ContractPage[];
+  isLandscape?: boolean; // New property for orientation
 }
 
 export interface ClientProfile {
