@@ -368,14 +368,37 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
   const [entryType, setEntryType] = useState<'charge' | 'payment'>('charge');
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
   const isAdmin = currentUser?.username === 'admin';
+  const isStrictEmployee = currentUser?.role_id === 'employee_role';
 
   useEffect(() => {
     fetchClients();
   }, []);
 
   const fetchClients = async () => {
-    const { data } = await supabase.from('clients').select('*').order('name');
-    if (data) setClients(data);
+    if (isAdmin) {
+      const { data } = await supabase.from('clients').select('*').order('name');
+      if (data) setClients(data);
+    } else {
+      // 1. Get IDs of clients assigned to this employee via contracts
+      const { data: assignedContracts } = await supabase
+        .from('contracts')
+        .select('client_id')
+        .eq('assigned_to', currentUser.id);
+
+      if (assignedContracts && assignedContracts.length > 0) {
+        const clientIds = Array.from(new Set(assignedContracts.map(c => c.client_id)));
+        // 2. Fetch profile data for these specific clients
+        const { data: allowedClients } = await supabase
+          .from('clients')
+          .select('*')
+          .in('id', clientIds)
+          .order('name');
+        
+        if (allowedClients) setClients(allowedClients);
+      } else {
+        setClients([]);
+      }
+    }
   };
 
   const fetchTransactions = async (clientId: string) => {
@@ -447,7 +470,9 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
              <Wallet size={60} />
           </div>
           <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">حسابداری و امور مالی</h2>
-          <p className="text-slate-500 font-medium text-lg opacity-80">مدیریت دستی بدهی‌ها و پرداختی‌های مشتریان</p>
+          <p className="text-slate-500 font-medium text-lg opacity-80">
+            {isStrictEmployee ? 'مدیریت مالی مشتریان ارجاع شده به شما' : 'مدیریت دستی بدهی‌ها و پرداختی‌های مشتریان'}
+          </p>
         </div>
         <div className="relative group">
             <Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={24} />
@@ -467,7 +492,7 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
                    </div>
                  ))}
                </div>
-             ) : ( <div className="p-14 text-center text-slate-400 font-bold">مشتری با این مشخصات یافت نشد</div> )}
+             ) : ( <div className="p-14 text-center text-slate-400 font-bold">مشتری با این مشخصات در لیست ارجاعی شما یافت نشد</div> )}
           </div>
         )}
       </div>
@@ -535,7 +560,7 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
                        <p className="text-[10px] font-black text-slate-300">{new Date(t.created_at).toLocaleDateString('fa-IR')}</p>
                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button onClick={() => { setEditingTransaction(t); setIsEntryModalOpen(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil size={14}/></button>
-                          <button onClick={() => deleteTransaction(t.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button>
+                          <button onClick={() => deleteTransaction(t.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 size={14}/></button>
                        </div>
                     </div>
                  </div>
@@ -557,7 +582,7 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
                        <p className="text-[10px] font-black text-slate-300">{new Date(t.created_at).toLocaleDateString('fa-IR')}</p>
                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button onClick={() => { setEditingTransaction(t); setIsEntryModalOpen(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil size={14}/></button>
-                          <button onClick={() => deleteTransaction(t.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button>
+                          <button onClick={() => deleteTransaction(t.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 size={14}/></button>
                        </div>
                     </div>
                  </div>
@@ -781,7 +806,8 @@ const Sidebar = ({ activeTab, setActiveTab, userPermissions, onLogout, currentUs
     // Priority 1: Admin sees everything
     if (isAdmin) return true;
     // Priority 2: System Employee role is forced to specific menus
-    if (isStrictEmployee) return item.id === 'archive' || item.id === 'workspace';
+    // RELEASE NOTE: Employee now can access accounting to manage assigned clients
+    if (isStrictEmployee) return item.id === 'archive' || item.id === 'workspace' || item.id === 'accounting';
     // Priority 3: Custom roles see what is checked in their permissions (checkboxes)
     return userPermissions.includes(item.perm);
   });
@@ -2379,17 +2405,20 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
                         )}
                       </div>
                       <div className="flex gap-2">
-                        {!isStrictEmployee && (
-                          <div className="relative">
-                            <button onClick={() => setActiveShareId(activeShareId === contract.id ? null : contract.id)} className="text-slate-300 hover:text-emerald-500 transition-all p-2 bg-slate-50 rounded-xl"><Share2 size={20}/></button>
-                            {activeShareId === contract.id && (
-                              <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[100] animate-in zoom-in-95 p-2 overflow-hidden">
-                                 <button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, true); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-emerald-50 text-emerald-600 rounded-xl transition-all text-right"><MessageCircle size={18}/><span className="text-[11px] font-black">ارسال در واتساپ</span></button>
-                                 <button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, false); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 text-blue-600 rounded-xl transition-all text-right border-t border-slate-50"><Download size={18}/><span className="text-[11px] font-black">دانلود پی‌دی‌اف</span></button>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        {/* 
+                          طرح پیشنهادی: حذف شرط {!isStrictEmployee} برای منوی اشتراک‌گذاری.
+                          چون لیست در خط ۸۳۷ فیلتر شده، کارمند فقط قراردادهای خودش را می‌بیند
+                          و دکمه اشتراک‌گذاری فقط برای همان‌ها برایش فعال می‌شود.
+                        */}
+                        <div className="relative">
+                          <button onClick={() => setActiveShareId(activeShareId === contract.id ? null : contract.id)} className="text-slate-300 hover:text-emerald-500 transition-all p-2 bg-slate-50 rounded-xl"><Share2 size={20}/></button>
+                          {activeShareId === contract.id && (
+                            <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[100] animate-in zoom-in-95 p-2 overflow-hidden">
+                                <button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, true); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-emerald-50 text-emerald-600 rounded-xl transition-all text-right"><MessageCircle size={18}/><span className="text-[11px] font-black">ارسال در واتساپ</span></button>
+                                <button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, false); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 text-blue-600 rounded-xl transition-all text-right border-t border-slate-50"><Download size={18}/><span className="text-[11px] font-black">دانلود پی‌دی‌اف</span></button>
+                            </div>
+                          )}
+                        </div>
                         {isAdmin && <button onClick={() => setAssignmentModal(contract)} className={`p-2 rounded-xl transition-all ${contract.assigned_to ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-300 hover:text-blue-600'}`}><UserCheck size={20}/></button>}
                         {canEdit && <button onClick={() => onEdit(contract)} className="text-slate-300 hover:text-amber-500 transition-all p-2 bg-slate-50 rounded-xl"><Pencil size={20}/></button>}
                         {canPrint && <button onClick={() => { onEdit(contract); triggerProfessionalPrint(); }} className="text-slate-300 hover:text-blue-600 transition-all p-2 bg-slate-50 rounded-xl"><Printer size={20}/></button>}
@@ -2494,7 +2523,7 @@ export default function App() {
   useEffect(() => { 
     if (!initializing && currentUser) {
       if (isStrictEmployee) {
-        if (!editingContract && activeTab !== 'archive' && activeTab !== 'workspace') {
+        if (!editingContract && activeTab !== 'archive' && activeTab !== 'workspace' && activeTab !== 'accounting') {
           setActiveTab('archive');
         }
       } else if (!isAdmin) {
