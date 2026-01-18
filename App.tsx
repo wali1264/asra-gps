@@ -519,7 +519,16 @@ const VisualCanvasPage = ({ page, formData, setFormData, zoom, activeFieldKey, s
   const baseWidth = isLandscape ? (isA4 ? 842 : 595) : (isA4 ? 595 : 420);
   const baseHeight = isLandscape ? (isA4 ? 595 : 420) : (isA4 ? 842 : 595);
   return (
-    <div className="relative mx-auto bg-white shadow-2xl border border-slate-200 transition-all duration-500 origin-top overflow-hidden box-border" style={{ width: `${baseWidth * zoom}px`, height: `${baseHeight * zoom}px`, backgroundImage: localBg ? `url(${localBg})` : 'none', backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat', imageRendering: 'high-quality', WebkitFontSmoothing: 'antialiased' }} onClick={() => { setActiveFieldKey(null); setOpenDropdown(null); }}>
+    <div className="relative mx-auto bg-white shadow-2xl border border-slate-200 transition-all duration-500 origin-top overflow-hidden box-border" style={{ width: `${baseWidth * zoom}px`, height: `${baseHeight * zoom}px`, transform: 'translateZ(0)', willChange: 'transform', imageRendering: 'high-quality', WebkitFontSmoothing: 'antialiased' }} onClick={() => { setActiveFieldKey(null); setOpenDropdown(null); }}>
+      {localBg && (
+        <img 
+          src={localBg} 
+          alt="Letterhead Background" 
+          className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0"
+          style={{ imageRendering: '-webkit-optimize-contrast' }}
+          decoding="sync"
+        />
+      )}
       {activeFields.map((field) => (
         <div key={field.id} className={`absolute flex transition-all duration-300 ${activeFieldKey === field.key ? 'z-50' : 'z-10'} cursor-pointer`} style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width * zoom}px`, height: `${(field.height || 30) * zoom}px`, transform: `translateY(-50%) rotate(${field.rotation}deg)`, display: 'flex', alignItems: 'center', justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center' }} onClick={(e) => { e.stopPropagation(); setActiveFieldKey(field.key); if (field.isDropdown) setOpenDropdown(field.key); else setOpenDropdown(null); }}>
           <div className={`absolute -inset-[2px] border-2 transition-all duration-300 pointer-events-none ${activeFieldKey === field.key ? 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] opacity-100' : 'border-transparent opacity-0'}`} />
@@ -722,7 +731,16 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
           )}
         </div>
         <div className="flex-1 bg-slate-200/30 p-8 overflow-auto flex items-start justify-center custom-scrollbar no-print">
-          <div ref={canvasRef} className="bg-white shadow-2xl relative border border-slate-200 transition-all origin-top no-print" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, backgroundImage: canvasBg ? `url(${canvasBg})` : 'none', backgroundSize: '100% 100%', imageRendering: 'high-quality' }}>
+          <div ref={canvasRef} className="bg-white shadow-2xl relative border border-slate-200 transition-all origin-top no-print" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: 'translateZ(0)', willChange: 'transform', imageRendering: 'high-quality' }}>
+            {canvasBg && (
+              <img 
+                src={canvasBg} 
+                alt="Template" 
+                className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0"
+                style={{ imageRendering: '-webkit-optimize-contrast' }}
+                decoding="sync"
+              />
+            )}
             {fields.filter(f => f.isActive).map(f => (
               <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `translateY(-50%) rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
                 {/* RECOVERED: Neon Active Border Effect */}
