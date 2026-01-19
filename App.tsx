@@ -23,33 +23,12 @@ const initDB = (): Promise<IDBDatabase> => {
   });
 };
 
-// Smart Compressor: Reduces size using canvas without losing visual clarity
+// Lossless Processor: Preserves every pixel for Workspace and Database
 const compressImage = async (file: File): Promise<Blob> => {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject('Canvas context failed');
-
-        // Maintain original resolution for clarity
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        
-        // Export as WebP with high quality (0.8-0.9 is perfect balance)
-        canvas.toBlob(
-          (blob) => blob ? resolve(blob) : reject('Compression failed'),
-          'image/webP',
-          0.85
-        );
-      };
-    };
-    reader.onerror = (e) => reject(e);
+    // We strictly return the original file to ensure ZERO quality loss during upload
+    // The browser handles modern image formats efficiently
+    resolve(file);
   });
 };
 
@@ -67,7 +46,7 @@ const cacheImage = async (url: string, forceRefresh = false): Promise<string> =>
 
     if (cached && !forceRefresh) return URL.createObjectURL(cached);
 
-    // Fetch in background with CORS
+    // Fetch with high priority for visual clarity
     const response = await fetch(url, { mode: 'cors', cache: 'no-cache' });
     const blob = await response.blob();
     const writeTx = db.transaction(STORE_NAME, 'readwrite');
@@ -79,11 +58,42 @@ const cacheImage = async (url: string, forceRefresh = false): Promise<string> =>
   }
 };
 
+// Optimized Print Helper: Generates a high-density 300DPI version only for the print job
+const getPrintOptimizedBlob = async (url: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = url;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(url);
+
+      // Target A4 300 DPI for crystal clear print (approx 2480x3508)
+      // This is "heavy" for a screen but "perfect" for a printer
+      const targetWidth = 2480; 
+      const scaleFactor = targetWidth / img.width;
+      canvas.width = targetWidth;
+      canvas.height = img.height * scaleFactor;
+      
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
+      // Export as high-quality JPEG (0.92) to keep the print spooler fast but sharp
+      canvas.toBlob((blob) => {
+        if (blob) resolve(URL.createObjectURL(blob));
+        else resolve(url);
+      }, 'image/jpeg', 0.92);
+    };
+    img.onerror = () => resolve(url);
+  });
+};
+
 // --- Professional Printing Engine ---
 const triggerProfessionalPrint = async (isLandscape: boolean = false) => {
-  showToast('در حال آماده‌سازی نهایی برای چاپ...');
+  showToast('در حال بهینه‌سازی ۳۰۰ DPI برای چاپ...');
   
-  // Update browser print orientation via style injection
   const style = document.createElement('style');
   style.id = 'print-orientation-style';
   style.innerHTML = `@page { size: ${isLandscape ? 'landscape' : 'portrait'}; }`;
@@ -92,32 +102,31 @@ const triggerProfessionalPrint = async (isLandscape: boolean = false) => {
   const printLayer = document.querySelector('.print-root-layer');
   if (!printLayer) return;
 
-  const images = Array.from(printLayer.querySelectorAll('.print-page-unit'))
-    .map(el => {
-      const style = window.getComputedStyle(el);
+  const pageUnits = Array.from(printLayer.querySelectorAll('.print-page-unit')) as HTMLElement[];
+  
+  try {
+    // Process each page: Convert the high-quality source to a print-optimized version
+    await Promise.all(pageUnits.map(async (unit) => {
+      const style = window.getComputedStyle(unit);
       const bg = style.backgroundImage;
       if (bg && bg !== 'none') {
         const url = bg.replace(/url\(['"]?(.*?)['"]?\)/, '$1');
-        return url;
+        const optimizedUrl = await getPrintOptimizedBlob(url);
+        unit.style.backgroundImage = `url("${optimizedUrl}")`;
+        
+        // Ensure image is fully loaded in memory before window.print
+        await new Promise((resolve) => {
+          const img = new Image();
+          img.src = optimizedUrl;
+          img.onload = resolve;
+          img.onerror = resolve;
+        });
       }
-      return null;
-    })
-    .filter(Boolean) as string[];
-
-  try {
-    await Promise.all(images.map(url => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.src = url;
-        img.onload = resolve;
-        img.onerror = resolve;
-      });
     }));
 
-    await new Promise(resolve => setTimeout(resolve, 350));
+    await new Promise(resolve => setTimeout(resolve, 500));
     window.print();
     
-    // Cleanup style after print dialog
     setTimeout(() => {
         const styleEl = document.getElementById('print-orientation-style');
         if (styleEl) styleEl.remove();
@@ -638,7 +647,7 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
   
   const handleDrag = (e: React.MouseEvent, id: string) => { 
     if (!canvasRef.current) return; 
-    setSelectedFieldId(id); // CRITICAL RECOVERY: Ensure field is selected on click/drag
+    setSelectedFieldId(id);
     const canvasRect = canvasRef.current.getBoundingClientRect(); 
     const onMouseMove = (m: MouseEvent) => { 
       const x = ((m.clientX - canvasRect.left) / canvasRect.width) * 100; 
@@ -691,7 +700,6 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
                 </div>
               </div>
               
-              {/* RECOVERED: Element Editor Panel */}
               {selectedField && (
                 <div className="bg-blue-50/50 rounded-[28px] p-6 border border-blue-100 shadow-inner animate-in slide-in-from-right-4">
                   <h4 className="text-xs font-black text-blue-900 mb-5 flex items-center gap-2"><Type size={14} /> ویرایش: {selectedField.label}</h4>
@@ -743,7 +751,6 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
             )}
             {fields.filter(f => f.isActive).map(f => (
               <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `translateY(-50%) rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
-                {/* RECOVERED: Neon Active Border Effect */}
                 <div className={`absolute -inset-2 border-2 rounded-lg transition-all ${selectedFieldId === f.id ? 'border-emerald-400 bg-emerald-400/5 shadow-[0_0_15px_rgba(52,211,153,0.3)]' : 'border-transparent'}`} />
                 <span className={`relative font-black tracking-tight w-full leading-none break-words ${selectedFieldId === f.id ? 'text-emerald-700' : 'text-slate-800 opacity-60'}`}>{f.label}{f.isDropdown && <ChevronDown size={8} className="inline mr-1 opacity-40" />}</span>
               </div>
@@ -795,14 +802,13 @@ export default function App() {
   const initializeApp = async () => {
     const savedSession = localStorage.getItem('asra_gps_session_v2'); if (savedSession) setCurrentUser(JSON.parse(savedSession));
     const { data: rData } = await supabase.from('roles').select('*'); if (rData) setRoles(rData);
-    const { data: sData } = await supabase.from('settings').select('*').eq('key', 'contract_template');
+    const { data: sData = [] } = await supabase.from('settings').select('*').eq('key', 'contract_template');
     if (sData && sData.length > 0) setTemplate(sData[0].value);
     setInitializing(false);
   };
   const userPermissions = useMemo(() => { if (!currentUser) return []; const role = roles.find((r: any) => r.id === (currentUser.role_id || currentUser.roleId)); return role ? role.perms : []; }, [currentUser, roles]);
   const isAdmin = currentUser?.username === 'admin'; const isStrictEmployee = currentUser?.role_id === 'employee_role';
   
-  // Logic to auto-collapse menu if document is landscape
   const isLandscapeMode = !!template.isLandscape && activeTab === 'workspace';
 
   if (initializing) return (<div className="fixed inset-0 bg-slate-900 flex items-center justify-center flex-col gap-6"><div className="animate-bounce bg-white p-4 rounded-3xl shadow-2xl"><AsraLogo size={60} /></div><div className="text-white font-black text-sm animate-pulse">در حال آماده‌سازی...</div></div>);
@@ -831,3 +837,4 @@ export default function App() {
     </div>
   );
 }
+
