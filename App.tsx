@@ -26,8 +26,6 @@ const initDB = (): Promise<IDBDatabase> => {
 // Lossless Processor: Preserves every pixel for Workspace and Database
 const compressImage = async (file: File): Promise<Blob> => {
   return new Promise((resolve, reject) => {
-    // We strictly return the original file to ensure ZERO quality loss during upload
-    // The browser handles modern image formats efficiently
     resolve(file);
   });
 };
@@ -46,7 +44,6 @@ const cacheImage = async (url: string, forceRefresh = false): Promise<string> =>
 
     if (cached && !forceRefresh) return URL.createObjectURL(cached);
 
-    // Fetch with high priority for visual clarity
     const response = await fetch(url, { mode: 'cors', cache: 'no-cache' });
     const blob = await response.blob();
     const writeTx = db.transaction(STORE_NAME, 'readwrite');
@@ -58,7 +55,6 @@ const cacheImage = async (url: string, forceRefresh = false): Promise<string> =>
   }
 };
 
-// Optimized Print Helper: Generates a high-density 300DPI version only for the print job
 const getPrintOptimizedBlob = async (url: string): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -68,19 +64,13 @@ const getPrintOptimizedBlob = async (url: string): Promise<string> => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return resolve(url);
-
-      // Target A4 300 DPI for crystal clear print (approx 2480x3508)
-      // This is "heavy" for a screen but "perfect" for a printer
       const targetWidth = 2480; 
       const scaleFactor = targetWidth / img.width;
       canvas.width = targetWidth;
       canvas.height = img.height * scaleFactor;
-      
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Export as high-quality JPEG (0.92) to keep the print spooler fast but sharp
       canvas.toBlob((blob) => {
         if (blob) resolve(URL.createObjectURL(blob));
         else resolve(url);
@@ -91,9 +81,16 @@ const getPrintOptimizedBlob = async (url: string): Promise<string> => {
 };
 
 // --- Professional Printing Engine ---
-const triggerProfessionalPrint = async (isLandscape: boolean = false) => {
-  showToast('در حال بهینه‌سازی ۳۰۰ DPI برای چاپ...');
+const triggerProfessionalPrint = async (isLandscape: boolean = false, contractId?: string) => {
+  showToast('در حال آماده‌سازی برای چاپ...');
   
+  // Track print time in DB if ID is provided
+  if (contractId) {
+    supabase.from('contracts').update({ last_printed_at: new Date().toISOString() }).eq('id', contractId).then(() => {
+        // Silent update, will refresh on archive reload
+    });
+  }
+
   const style = document.createElement('style');
   style.id = 'print-orientation-style';
   style.innerHTML = `@page { size: ${isLandscape ? 'landscape' : 'portrait'}; }`;
@@ -105,7 +102,6 @@ const triggerProfessionalPrint = async (isLandscape: boolean = false) => {
   const pageUnits = Array.from(printLayer.querySelectorAll('.print-page-unit')) as HTMLElement[];
   
   try {
-    // Process each page: Convert the high-quality source to a print-optimized version
     await Promise.all(pageUnits.map(async (unit) => {
       const style = window.getComputedStyle(unit);
       const bg = style.backgroundImage;
@@ -113,8 +109,6 @@ const triggerProfessionalPrint = async (isLandscape: boolean = false) => {
         const url = bg.replace(/url\(['"]?(.*?)['"]?\)/, '$1');
         const optimizedUrl = await getPrintOptimizedBlob(url);
         unit.style.backgroundImage = `url("${optimizedUrl}")`;
-        
-        // Ensure image is fully loaded in memory before window.print
         await new Promise((resolve) => {
           const img = new Image();
           img.src = optimizedUrl;
@@ -174,6 +168,7 @@ const Toast = () => {
 // --- Smart Reports Logic ---
 const ReportsPanel = () => {
   const [contracts, setContracts] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [isEmployeeMenuOpen, setIsEmployeeMenuOpen] = useState(false);
@@ -184,6 +179,7 @@ const ReportsPanel = () => {
 
   useEffect(() => {
     fetchEmployees();
+    fetchClientsData();
   }, []);
 
   useEffect(() => {
@@ -195,15 +191,15 @@ const ReportsPanel = () => {
     if (data) setEmployees(data);
   };
 
+  const fetchClientsData = async () => {
+    const { data } = await supabase.from('clients').select('*');
+    if (data) setClients(data);
+  };
+
   const fetchReportData = async () => {
     setLoading(true);
     let query = supabase.from('contracts').select('*');
-    
-    // Employee filter
-    if (selectedEmployeeId) {
-      query = query.eq('assigned_to', selectedEmployeeId);
-    }
-
+    if (selectedEmployeeId) query = query.eq('assigned_to', selectedEmployeeId);
     const now = new Date();
     let startDate = new Date();
     if (quickFilter === 'today') startDate.setHours(0, 0, 0, 0);
@@ -211,17 +207,14 @@ const ReportsPanel = () => {
     else if (quickFilter === 'month') startDate.setMonth(now.getMonth() - 1);
     else if (quickFilter === 'year') startDate.setFullYear(now.getFullYear() - 1);
     else if (quickFilter === 'custom' && dateRange.start) startDate = new Date(dateRange.start);
-    
     if (quickFilter !== 'custom' || dateRange.start) query = query.gte('timestamp', startDate.toISOString());
     if (quickFilter === 'custom' && dateRange.end) {
       const end = new Date(dateRange.end);
       end.setHours(23, 59, 59, 999);
       query = query.lte('timestamp', end.toISOString());
     }
-    
     if (filterType === 'main') query = query.eq('is_extended', false);
     if (filterType === 'extended') query = query.eq('is_extended', true);
-    
     const { data } = await query.order('timestamp', { ascending: false });
     if (data) setContracts(data);
     setLoading(false);
@@ -242,75 +235,38 @@ const ReportsPanel = () => {
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <button 
-              onClick={() => setIsEmployeeMenuOpen(!isEmployeeMenuOpen)}
-              className={`flex items-center gap-3 px-6 py-3.5 rounded-[24px] font-black text-xs transition-all border shadow-sm ${selectedEmployeeId ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
-            >
-              <Users size={16} />
-              {selectedEmployeeId ? employees.find(e => e.id === selectedEmployeeId)?.username : 'فیلتر کارمند'}
-              <ChevronDown size={14} className={`transition-transform duration-300 ${isEmployeeMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
+            <button onClick={() => setIsEmployeeMenuOpen(!isEmployeeMenuOpen)} className={`flex items-center gap-3 px-6 py-3.5 rounded-[24px] font-black text-xs transition-all border shadow-sm ${selectedEmployeeId ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}><Users size={16} />{selectedEmployeeId ? employees.find(e => e.id === selectedEmployeeId)?.username : 'فیلتر کارمند'}<ChevronDown size={14} className={`transition-transform duration-300 ${isEmployeeMenuOpen ? 'rotate-180' : ''}`} /></button>
             {isEmployeeMenuOpen && (
               <div className="absolute top-full mt-3 right-0 bg-white border border-slate-100 shadow-2xl rounded-[28px] p-2 z-[200] animate-in zoom-in-95 w-56 overflow-hidden">
-                <button 
-                  onClick={() => { setSelectedEmployeeId(null); setIsEmployeeMenuOpen(false); }}
-                  className={`w-full flex items-center justify-between p-4 rounded-2xl text-[10px] font-black transition-all ${!selectedEmployeeId ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-50 text-slate-600'}`}
-                >
-                  <span>همه کارمندان (کل سیستم)</span>
-                  {!selectedEmployeeId && <Check size={14}/>}
-                </button>
+                <button onClick={() => { setSelectedEmployeeId(null); setIsEmployeeMenuOpen(false); }} className={`w-full flex items-center justify-between p-4 rounded-2xl text-[10px] font-black transition-all ${!selectedEmployeeId ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-50 text-slate-600'}`}><span>همه کارمندان (کل سیستم)</span>{!selectedEmployeeId && <Check size={14}/>}</button>
                 <div className="h-[1px] bg-slate-50 my-2 mx-2" />
-                {employees.map(emp => (
-                  <button 
-                    key={emp.id} 
-                    onClick={() => { setSelectedEmployeeId(emp.id); setIsEmployeeMenuOpen(false); }}
-                    className={`w-full flex items-center justify-between p-4 rounded-2xl text-[10px] font-black transition-all mt-1 ${selectedEmployeeId === emp.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-50 text-slate-600'}`}
-                  >
-                    <span>{emp.username}</span>
-                    {selectedEmployeeId === emp.id && <Check size={14}/>}
-                  </button>
-                ))}
+                {employees.map(emp => (<button key={emp.id} onClick={() => { setSelectedEmployeeId(emp.id); setIsEmployeeMenuOpen(false); }} className={`w-full flex items-center justify-between p-4 rounded-2xl text-[10px] font-black transition-all mt-1 ${selectedEmployeeId === emp.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-50 text-slate-600'}`}><span>{emp.username}</span>{selectedEmployeeId === emp.id && <Check size={14}/>}</button>))}
               </div>
             )}
           </div>
           <div className="bg-white p-2 rounded-[28px] shadow-sm border border-slate-100 flex items-center gap-1">
-            {[
-              { id: 'today', label: 'امروز' },
-              { id: 'week', label: 'هفته' },
-              { id: 'month', label: 'ماه' },
-              { id: 'year', label: 'سال' },
-              { id: 'custom', label: 'سفارشی' },
-            ].map(f => (
-              <button key={f.id} onClick={() => setQuickFilter(f.id as any)} className={`px-5 py-2.5 rounded-2xl text-xs font-black transition-all ${quickFilter === f.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>{f.label}</button>
-            ))}
+            {[{ id: 'today', label: 'امروز' }, { id: 'week', label: 'هفته' }, { id: 'month', label: 'ماه' }, { id: 'year', label: 'سال' }, { id: 'custom', label: 'سفارشی' }].map(f => (<button key={f.id} onClick={() => setQuickFilter(f.id as any)} className={`px-5 py-2.5 rounded-2xl text-xs font-black transition-all ${quickFilter === f.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>{f.label}</button>))}
           </div>
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full opacity-50 group-hover:scale-110 transition-transform"></div>
-          <div className="relative z-10"><div className="flex items-center gap-3 mb-4 text-blue-600"><BarChart3 size={20}/> <span className="text-[10px] font-black uppercase tracking-widest">کل خدمات</span></div><p className="text-4xl font-black text-slate-800">{stats.total}</p></div>
-        </div>
-        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full opacity-50 group-hover:scale-110 transition-transform"></div>
-          <div className="relative z-10"><div className="flex items-center gap-3 mb-4 text-indigo-600"><FileText size={20}/> <span className="text-[10px] font-black uppercase tracking-widest">قرارداد اصلی</span></div><p className="text-4xl font-black text-slate-800">{stats.mainCount}</p></div>
-        </div>
-        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full opacity-50 group-hover:scale-110 transition-transform"></div>
-          <div className="relative z-10"><div className="flex items-center gap-3 mb-4 text-emerald-600"><Repeat size={20}/> <span className="text-[10px] font-black uppercase tracking-widest">تمدیدی‌ها</span></div><p className="text-4xl font-black text-slate-800">{stats.extCount}</p></div>
-        </div>
+        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden group"><div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full opacity-50 group-hover:scale-110 transition-transform"></div><div className="relative z-10"><div className="flex items-center gap-3 mb-4 text-blue-600"><BarChart3 size={20}/> <span className="text-[10px] font-black uppercase tracking-widest">کل خدمات</span></div><p className="text-4xl font-black text-slate-800">{stats.total}</p></div></div>
+        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden group"><div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full opacity-50 group-hover:scale-110 transition-transform"></div><div className="relative z-10"><div className="flex items-center gap-3 mb-4 text-indigo-600"><FileText size={20}/> <span className="text-[10px] font-black uppercase tracking-widest">قرارداد اصلی</span></div><p className="text-4xl font-black text-slate-800">{stats.mainCount}</p></div></div>
+        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm relative overflow-hidden group"><div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full opacity-50 group-hover:scale-110 transition-transform"></div><div className="relative z-10"><div className="flex items-center gap-3 mb-4 text-emerald-600"><Repeat size={20}/> <span className="text-[10px] font-black uppercase tracking-widest">تمدیدی‌ها</span></div><p className="text-4xl font-black text-slate-800">{stats.extCount}</p></div></div>
       </div>
       {quickFilter === 'custom' && (
-        <div className="bg-white p-6 rounded-[32px] border border-slate-100 mb-8 flex flex-wrap gap-6 animate-in slide-in-from-top-4">
-           <div className="flex-1 min-w-[200px] space-y-2"><label className="text-[10px] font-black text-slate-400 mr-2 uppercase">از تاریخ</label><input type="date" className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold text-sm" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} /></div>
-           <div className="flex-1 min-w-[200px] space-y-2"><label className="text-[10px] font-black text-slate-400 mr-2 uppercase">تا تاریخ</label><input type="date" className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold text-sm" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} /></div>
-        </div>
+        <div className="bg-white p-6 rounded-[32px] border border-slate-100 mb-8 flex flex-wrap gap-6 animate-in slide-in-from-top-4"><div className="flex-1 min-w-[200px] space-y-2"><label className="text-[10px] font-black text-slate-400 mr-2 uppercase">از تاریخ</label><input type="date" className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold text-sm" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} /></div><div className="flex-1 min-w-[200px] space-y-2"><label className="text-[10px] font-black text-slate-400 mr-2 uppercase">تا تاریخ</label><input type="date" className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold text-sm" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} /></div></div>
       )}
       <div className="bg-white rounded-[48px] border border-slate-100 shadow-sm overflow-hidden flex-1 flex flex-col">
         <div className="p-6 border-b flex items-center justify-between bg-slate-50/50"><h4 className="font-black text-slate-800 flex items-center gap-2"><List size={18}/> ریز گزارش قراردادها</h4><div className="flex bg-white p-1 rounded-xl border border-slate-100"><button onClick={() => setFilterType('all')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${filterType === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>همه</button><button onClick={() => setFilterType('main')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${filterType === 'main' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>اصلی</button><button onClick={() => setFilterType('extended')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${filterType === 'extended' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>تمدیدی</button></div></div>
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
            {loading ? (<div className="h-full flex items-center justify-center text-slate-300 font-black animate-pulse">در حال تحلیل داده‌ها...</div>) : contracts.length > 0 ? (<div className="space-y-4">
-                {contracts.map(c => (<div key={c.id} className="p-6 bg-white border border-slate-100 rounded-[32px] flex items-center justify-between hover:bg-slate-50 transition-all"><div className="flex items-center gap-6"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${c.is_extended ? 'bg-emerald-500' : 'bg-blue-600'}`}>{c.is_extended ? <Repeat size={18}/> : <FileText size={18}/>}</div><div><h5 className="font-black text-slate-800">{c.client_name}</h5><p className="text-[10px] font-bold text-slate-400">پلاک: {c.form_data?.tazkira || '---'}</p></div></div><div className="text-left"><p className="text-xs font-black text-slate-700">{new Date(c.timestamp).toLocaleDateString('fa-IR')}</p><p className={`text-[9px] font-black mt-1 ${c.is_extended ? 'text-emerald-500' : 'text-blue-500'}`}>{c.is_extended ? 'تمدید خدمات' : 'قرارداد اولیه'}</p></div></div>))}
+                {contracts.map(c => {
+                  const clientProfile = clients.find(cl => cl.id === c.client_id);
+                  return (
+                    <div key={c.id} className="p-6 bg-white border border-slate-100 rounded-[32px] flex items-center justify-between hover:bg-slate-50 transition-all"><div className="flex items-center gap-6"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg ${c.is_extended ? 'bg-emerald-500' : 'bg-blue-600'}`}>{c.is_extended ? <Repeat size={18}/> : <FileText size={18}/>}</div><div><h5 className="font-black text-slate-800">{c.client_name}</h5><p className="text-[10px] font-bold text-slate-400">پلاک: {clientProfile?.tazkira || '---'}</p></div></div><div className="text-left"><p className="text-xs font-black text-slate-700">{new Date(c.timestamp).toLocaleDateString('fa-IR')}</p><p className={`text-[9px] font-black mt-1 ${c.is_extended ? 'text-emerald-500' : 'text-blue-500'}`}>{c.is_extended ? 'تمدید خدمات' : 'قرارداد اولیه'}</p></div></div>
+                  );
+                })}
              </div>) : (<div className="h-full flex items-center justify-center text-slate-300 font-black italic">در این بازه زمانی تراکنشی یافت نشد</div>)}
         </div>
       </div>
@@ -324,16 +280,7 @@ const DesignGate = ({ onUnlock, onCancel }: { onUnlock: () => void, onCancel: ()
   const [isError, setIsError] = useState(false);
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); if (pass === 'wali') onUnlock(); else { setIsError(true); setTimeout(() => setIsError(false), 500); setPass(''); } };
   return (
-    <div className="flex flex-col items-center justify-center p-12 text-center animate-in fade-in zoom-in-95 duration-500">
-      <div className="w-24 h-24 bg-blue-600 text-white rounded-[32px] flex items-center justify-center mb-8 shadow-2xl shadow-blue-100 ring-8 ring-blue-50"><Lock size={40} /></div>
-      <h2 className="text-2xl font-black text-slate-800 mb-2">دسترسی محدود شده</h2>
-      <p className="text-slate-400 font-medium mb-10 max-w-xs">برای ورود به بخش مدیریت بوم طراحی، لطفاً رمز عبور را وارد نمایید.</p>
-      <form onSubmit={handleSubmit} className={`w-full max-w-sm space-y-4 ${isError ? 'animate-bounce' : ''}`}>
-        <div className="relative"><Key className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} /><input type="password" placeholder="رمز عبور طراحی..." autoFocus className={`w-full pr-14 pl-6 py-5 bg-white border-2 rounded-[24px] outline-none transition-all font-bold text-center text-xl tracking-[0.5em] ${isError ? 'border-red-500 bg-red-50' : 'border-slate-100 focus:border-blue-500 shadow-sm'}`} value={pass} onChange={e => setPass(e.target.value)} /></div>
-        <button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black text-lg shadow-xl hover:bg-black transition-all">تایید هویت</button>
-        <button type="button" onClick={onCancel} className="text-slate-400 font-bold text-sm hover:text-slate-600">انصراف</button>
-      </form>
-    </div>
+    <div className="flex flex-col items-center justify-center p-12 text-center animate-in fade-in zoom-in-95 duration-500"><div className="w-24 h-24 bg-blue-600 text-white rounded-[32px] flex items-center justify-center mb-8 shadow-2xl shadow-blue-100 ring-8 ring-blue-50"><Lock size={40} /></div><h2 className="text-2xl font-black text-slate-800 mb-2">دسترسی محدود شده</h2><p className="text-slate-400 font-medium mb-10 max-w-xs">برای ورود به بخش مدیریت بوم طراحی، لطفاً رمز عبور را وارد نمایید.</p><form onSubmit={handleSubmit} className={`w-full max-w-sm space-y-4 ${isError ? 'animate-bounce' : ''}`}><div className="relative"><Key className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} /><input type="password" placeholder="رمز عبور طراحی..." autoFocus className={`w-full pr-14 pl-6 py-5 bg-white border-2 rounded-[24px] outline-none transition-all font-bold text-center text-xl tracking-[0.5em] ${isError ? 'border-red-500 bg-red-50' : 'border-slate-100 focus:border-blue-500 shadow-sm'}`} value={pass} onChange={e => setPass(e.target.value)} /></div><button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black text-lg shadow-xl hover:bg-black transition-all">تایید هویت</button><button type="button" onClick={onCancel} className="text-slate-400 font-bold text-sm hover:text-slate-600">انصراف</button></form></div>
   );
 };
 
@@ -348,7 +295,6 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
   const isAdmin = currentUser?.username === 'admin';
   const isStrictEmployee = currentUser?.role_id === 'employee_role';
-
   useEffect(() => { fetchClients(); }, []);
   const fetchClients = async () => {
     if (isAdmin) {
@@ -383,21 +329,15 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
     const payments = transactions.filter(t => t.type === 'payment').reduce((acc, t) => acc + Number(t.amount || 0), 0);
     return { charges, payments, balance: charges - payments };
   }, [transactions]);
-
   if (!selectedClient) {
     return (
-      <div className="max-w-4xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-4">
-        <div className="text-center mb-12 pt-10"><div className="w-32 h-32 bg-blue-50 rounded-[40px] flex items-center justify-center mx-auto mb-6 shadow-xl border border-blue-100 text-blue-600"><Wallet size={60} /></div><h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">حسابداری و امور مالی</h2><p className="text-slate-500 font-medium text-lg opacity-80">{isStrictEmployee ? 'مدیریت مالی مشتریان ارجاع شده به شما' : 'مدیریت دستی بدهی‌ها و پرداختی‌های مشتریان'}</p></div>
-        <div className="relative group"><Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={24} /><input type="text" placeholder="نام یا شماره پلاک مشتری را وارد کنید..." className="w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-bold focus:border-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
-        {searchTerm && (
-          <div className="mt-8 bg-white rounded-[40px] border border-slate-100 shadow-2xl overflow-hidden animate-in zoom-in-95">{filteredClients.length > 0 ? (<div className="divide-y divide-slate-50">{filteredClients.map(c => (<div key={c.id} onClick={() => setSelectedClient(c)} className="p-8 flex items-center justify-between hover:bg-blue-50 cursor-pointer transition-all group"><div className="flex items-center gap-6"><div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-xl font-black text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">{c.name[0]}</div><div><h4 className="font-black text-lg text-slate-800">{c.name}</h4><p className="text-xs text-slate-400 font-bold">پلاک: {c.tazkira}</p></div></div><ChevronLeft className="text-slate-300" /></div>))}</div>) : ( <div className="p-14 text-center text-slate-400 font-bold">مشتری با این مشخصات در لیست ارجاعی شما یافت نشد</div> )}</div>
-        )}
+      <div className="max-w-4xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-4"><div className="text-center mb-12 pt-10"><div className="w-32 h-32 bg-blue-50 rounded-[40px] flex items-center justify-center mx-auto mb-6 shadow-xl border border-blue-100 text-blue-600"><Wallet size={60} /></div><h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">حسابداری و امور مالی</h2><p className="text-slate-500 font-medium text-lg opacity-80">{isStrictEmployee ? 'مدیریت مالی مشتریان ارجاع شده به شما' : 'مدیریت دستی بدهی‌ها و پرداختی‌های مشتریان'}</p></div><div className="relative group"><Search className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={24} /><input type="text" placeholder="نام یا شماره پلاک مشتری را وارد کنید..." className="w-full pr-16 pl-8 py-6 bg-white border-2 border-slate-100 rounded-[32px] shadow-sm outline-none transition-all text-xl font-bold focus:border-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+        {searchTerm && (<div className="mt-8 bg-white rounded-[40px] border border-slate-100 shadow-2xl overflow-hidden animate-in zoom-in-95">{filteredClients.length > 0 ? (<div className="divide-y divide-slate-50">{filteredClients.map(c => (<div key={c.id} onClick={() => setSelectedClient(c)} className="p-8 flex items-center justify-between hover:bg-blue-50 cursor-pointer transition-all group"><div className="flex items-center gap-6"><div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-xl font-black text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">{c.name[0]}</div><div><h4 className="font-black text-lg text-slate-800">{c.name}</h4><p className="text-xs text-slate-400 font-bold">پلاک: {c.tazkira}</p></div></div><ChevronLeft className="text-slate-300" /></div>))}</div>) : ( <div className="p-14 text-center text-slate-400 font-bold">مشتری با این مشخصات در لیست ارجاعی شما یافت نشد</div> )}</div>)}
       </div>
     );
   }
   return (
-    <div className="max-w-7xl mx-auto py-10 px-6 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar h-full">
-      <div className="flex flex-col md:flex-row items-center justify-between bg-white p-8 rounded-[48px] shadow-sm border border-slate-100 gap-6"><div className="flex items-center gap-6"><button onClick={() => setSelectedClient(null)} className="p-4 bg-slate-100 text-slate-500 rounded-2xl hover:bg-slate-200 transition-all"><X size={24}/></button><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">پرونده مالی</p><h3 className="text-2xl font-black text-slate-800">{selectedClient.name}</h3></div></div><div className="flex gap-4"><button onClick={() => { setEntryType('charge'); setIsEntryModalOpen(true); }} className="bg-red-500 text-white px-8 py-5 rounded-[28px] font-black text-sm flex items-center gap-3 shadow-lg shadow-red-100 hover:scale-105 transition-all"><TrendingDown size={20}/> ثبت بدهی (طلب)</button><button onClick={() => { setEntryType('payment'); setIsEntryModalOpen(true); }} className="bg-emerald-500 text-white px-8 py-5 rounded-[28px] font-black text-sm flex items-center gap-3 shadow-lg shadow-emerald-100 hover:scale-105 transition-all"><TrendingUp size={20}/> ثبت پرداختی (قسط)</button></div></div>
+    <div className="max-w-7xl mx-auto py-10 px-6 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar h-full"><div className="flex flex-col md:flex-row items-center justify-between bg-white p-8 rounded-[48px] shadow-sm border border-slate-100 gap-6"><div className="flex items-center gap-6"><button onClick={() => setSelectedClient(null)} className="p-4 bg-slate-100 text-slate-500 rounded-2xl hover:bg-slate-200 transition-all"><X size={24}/></button><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">پرونده مالی</p><h3 className="text-2xl font-black text-slate-800">{selectedClient.name}</h3></div></div><div className="flex gap-4"><button onClick={() => { setEntryType('charge'); setIsEntryModalOpen(true); }} className="bg-red-500 text-white px-8 py-5 rounded-[28px] font-black text-sm flex items-center gap-3 shadow-lg shadow-red-100 hover:scale-105 transition-all"><TrendingDown size={20}/> ثبت بدهی (طلب)</button><button onClick={() => { setEntryType('payment'); setIsEntryModalOpen(true); }} className="bg-emerald-500 text-white px-8 py-5 rounded-[28px] font-black text-sm flex items-center gap-3 shadow-lg shadow-emerald-100 hover:scale-105 transition-all"><TrendingUp size={20}/> ثبت پرداختی (قسط)</button></div></div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
          <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm"><div className="flex items-center gap-4 mb-4"><div className="p-3 bg-red-50 text-red-500 rounded-2xl"><TrendingDown size={24}/></div><span className="text-xs font-black text-slate-400 uppercase">کل بدهی‌ها</span></div><p className="text-3xl font-black text-slate-800">{totals.charges.toLocaleString()} <span className="text-sm opacity-30">AFN</span></p></div>
          <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm"><div className="flex items-center gap-4 mb-4"><div className="p-3 bg-emerald-50 text-emerald-500 rounded-2xl"><TrendingUp size={24}/></div><span className="text-xs font-black text-slate-400 uppercase">کل پرداختی‌ها</span></div><p className="text-3xl font-black text-slate-800">{totals.payments.toLocaleString()} <span className="text-sm opacity-30">AFN</span></p></div>
@@ -530,13 +470,7 @@ const VisualCanvasPage = ({ page, formData, setFormData, zoom, activeFieldKey, s
   return (
     <div className="relative mx-auto bg-white shadow-2xl border border-slate-200 transition-all duration-500 origin-top overflow-hidden box-border" style={{ width: `${baseWidth * zoom}px`, height: `${baseHeight * zoom}px`, transform: 'translateZ(0)', willChange: 'transform', imageRendering: 'high-quality', WebkitFontSmoothing: 'antialiased' }} onClick={() => { setActiveFieldKey(null); setOpenDropdown(null); }}>
       {localBg && (
-        <img 
-          src={localBg} 
-          alt="Letterhead Background" 
-          className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0"
-          style={{ imageRendering: '-webkit-optimize-contrast' }}
-          decoding="sync"
-        />
+        <img src={localBg} alt="Letterhead Background" className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0" style={{ imageRendering: '-webkit-optimize-contrast' }} decoding="sync" />
       )}
       {activeFields.map((field) => (
         <div key={field.id} className={`absolute flex transition-all duration-300 ${activeFieldKey === field.key ? 'z-50' : 'z-10'} cursor-pointer`} style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width * zoom}px`, height: `${(field.height || 30) * zoom}px`, transform: `translateY(-50%) rotate(${field.rotation}deg)`, display: 'flex', alignItems: 'center', justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center' }} onClick={(e) => { e.stopPropagation(); setActiveFieldKey(field.key); if (field.isDropdown) setOpenDropdown(field.key); else setOpenDropdown(null); }}>
@@ -601,7 +535,7 @@ const Workspace = ({ template, editData, onEditCancel, perms, formData, setFormD
             const isPageOpen = visiblePages.includes(page.pageNumber); const hasImage = !!page.bgImage; const activeFields = (page.fields || []).filter(f => f.isActive); if (!hasImage && page.pageNumber > 1) return null; if (!isPageOpen) return null;
             return (<div key={page.pageNumber} className="w-full flex flex-col items-center animate-in fade-in slide-in-from-bottom-8 duration-700"><div className="flex justify-center w-full">{hasImage ? (<VisualCanvasPage page={page} formData={formData} setFormData={setFormData} zoom={zoom} activeFieldKey={activeFieldKey} setActiveFieldKey={setActiveFieldKey} activeFont={activeFont} isLandscape={template.isLandscape} />) : (<div className="bg-white p-12 rounded-[56px] shadow-2xl border border-slate-100 w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8 relative overflow-hidden"><div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-[100px] opacity-40 -z-0" />{activeFields.map(f => (<div key={f.id} className="flex flex-col gap-2 relative z-10"><label className="text-[10px] font-black text-slate-400 uppercase mr-1 tracking-widest">{f.label}</label><input type="text" value={formData[f.key] || ''} onChange={(e) => setFormData({...formData, [f.key]: e.target.value})} placeholder="..." style={{ fontFamily: activeFont || 'Vazirmatn' }} className="w-full px-6 py-5 bg-slate-50 rounded-[24px] outline-none font-bold text-lg focus:bg-white focus:ring-4 ring-blue-50 transition-all border-2 border-transparent focus:border-blue-200" /></div>))}</div>)}</div></div>);
           })}
-          <div className="w-full max-w-4xl pt-10 pb-20 px-6 animate-in slide-in-from-bottom-10 delay-300"><div className="bg-white/60 backdrop-blur-xl p-8 rounded-[48px] border border-white shadow-2xl flex flex-col gap-4"><div className="flex flex-col md:flex-row gap-4">{(isAdmin || canEditInWorkspace) && (<button onClick={() => handleSaveContract(false)} className="flex-[2] bg-blue-600 text-white py-7 rounded-[32px] font-black text-xl shadow-2xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"><Save size={28} /> {editData ? 'ثبت تغییرات ارجاعی' : 'ثبت و آرشیو نهایی'}</button>)}{!isStrictEmployee && (<button onClick={handleSaveAsPreset} className="flex-1 bg-white border-2 border-slate-100 text-slate-700 py-7 rounded-[32px] font-black text-lg hover:bg-slate-50 hover:-translate-y-1 transition-all flex items-center justify-center gap-3 active:scale-95"><Copy size={24} className="text-blue-500" /> ذخیره به عنوان قالب</button>)}</div><div className="flex flex-col md:flex-row gap-4">{editData && (isAdmin || canEditInWorkspace) && !isStrictEmployee && (<button onClick={() => handleSaveContract(true)} className="flex-1 bg-emerald-500 text-white py-6 rounded-[28px] font-black text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-600 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"><Repeat size={24} /> تمدید قرارداد</button>)}<button onClick={() => triggerProfessionalPrint(template.isLandscape)} className="flex-1 bg-slate-900 text-white py-6 rounded-[28px] font-black text-lg flex items-center justify-center gap-4 hover:bg-black hover:-translate-y-1 transition-all shadow-xl active:scale-95"><Printer size={24}/> چاپ سند</button></div></div></div>
+          <div className="w-full max-w-4xl pt-10 pb-20 px-6 animate-in slide-in-from-bottom-10 delay-300"><div className="bg-white/60 backdrop-blur-xl p-8 rounded-[48px] border border-white shadow-2xl flex flex-col gap-4"><div className="flex flex-col md:flex-row gap-4">{(isAdmin || canEditInWorkspace) && (<button onClick={() => handleSaveContract(false)} className="flex-[2] bg-blue-600 text-white py-7 rounded-[32px] font-black text-xl shadow-2xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"><Save size={28} /> {editData ? 'ثبت تغییرات ارجاعی' : 'ثبت و آرشیو نهایی'}</button>)}{!isStrictEmployee && (<button onClick={handleSaveAsPreset} className="flex-1 bg-white border-2 border-slate-100 text-slate-700 py-7 rounded-[32px] font-black text-lg hover:bg-slate-50 hover:-translate-y-1 transition-all flex items-center justify-center gap-3 active:scale-95"><Copy size={24} className="text-blue-500" /> ذخیره به عنوان قالب</button>)}</div><div className="flex flex-col md:flex-row gap-4">{editData && (isAdmin || canEditInWorkspace) && !isStrictEmployee && (<button onClick={() => handleSaveContract(true)} className="flex-1 bg-emerald-500 text-white py-6 rounded-[28px] font-black text-lg shadow-xl shadow-emerald-200 hover:bg-emerald-600 hover:-translate-y-1 transition-all flex items-center justify-center gap-4 active:scale-95"><Repeat size={24} /> تمدید قرارداد</button>)}<button onClick={() => triggerProfessionalPrint(template.isLandscape, editData?.id)} className="flex-1 bg-slate-900 text-white py-6 rounded-[28px] font-black text-lg flex items-center justify-center gap-4 hover:bg-black hover:-translate-y-1 transition-all shadow-xl active:scale-95"><Printer size={24}/> چاپ سند</button></div></div></div>
         </div>
       </div>
     </div>
@@ -644,7 +578,6 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
   const handleSaveTemplate = async () => { await supabase.from('settings').upsert([{ key: 'contract_template', value: template }]); showToast('قالب طراحی در پایگاه داده تثبیت شد'); };
   const updateField = (id: string, updates: Partial<ContractField>) => setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: fields.map(f => f.id === id ? { ...f, ...updates } : f) } : p) });
   const handleAddField = () => { if (!newField.label) { showToast('نام المان نمی‌تواند خالی باشد'); return; } const id = Date.now().toString(); const field: ContractField = { id, label: newField.label, key: `f_${id}`, isActive: true, x: 40, y: 40, width: 150, height: 30, fontSize: 14, rotation: 0, alignment: 'R', isDropdown: newField.isDropdown, options: newField.isDropdown ? newField.optionsStr.split(',').map(o => o.trim()).filter(Boolean) : undefined }; setTemplate({ ...template, pages: pages.map(p => p.pageNumber === activePageNum ? { ...p, fields: [...fields, field] } : p) }); setNewField({ label: '', fontSize: 14, width: 150, alignment: 'R', isDropdown: false, optionsStr: '' }); };
-  
   const handleDrag = (e: React.MouseEvent, id: string) => { 
     if (!canvasRef.current) return; 
     setSelectedFieldId(id);
@@ -654,107 +587,24 @@ const DesktopSettings = ({ template, setTemplate, activePageNum, activeSubTab, s
       const y = ((m.clientY - canvasRect.top) / canvasRect.height) * 100; 
       updateField(id, { x: Math.max(0, Math.min(98, x)), y: Math.max(0, Math.min(98, y)) }); 
     }; 
-    const onMouseUp = () => { 
-      document.removeEventListener('mousemove', onMouseMove); 
-      document.removeEventListener('mouseup', onMouseUp); 
-    }; 
-    document.addEventListener('mousemove', onMouseMove); 
-    document.addEventListener('mouseup', onMouseUp); 
+    const onMouseUp = () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); }; 
+    document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp); 
   };
-
-  const isA4 = activePage.paperSize === PaperSize.A4; 
-  const isLandscape = !!template.isLandscape;
-  const canvasWidth = isLandscape ? (isA4 ? 842 : 595) : (isA4 ? 595 : 420);
-  const canvasHeight = isLandscape ? (isA4 ? 595 : 420) : (isA4 ? 842 : 595);
-
+  const isA4 = activePage.paperSize === PaperSize.A4; const isLandscape = !!template.isLandscape; const canvasWidth = isLandscape ? (isA4 ? 842 : 595) : (isA4 ? 595 : 420); const canvasHeight = isLandscape ? (isA4 ? 595 : 420) : (isA4 ? 842 : 595);
   return (
     <div className="flex flex-col h-full bg-white rounded-[40px] overflow-hidden border border-slate-100 shadow-2xl animate-in fade-in duration-700 no-print">
       <div className="bg-white/90 backdrop-blur-md border-b px-6 py-4 flex items-center justify-between no-print z-10 sticky top-0">
-        <div className="flex items-center gap-3">
-           <div className="flex bg-slate-100 p-1 rounded-2xl"><button onClick={() => setActiveSubTab('design')} className={`flex items-center gap-2 px-5 py-2 rounded-xl font-black text-xs transition-all ${activeSubTab === 'design' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-400'}`}><Layers size={16} /> بوم</button><button onClick={() => setActiveSubTab('fields')} className={`flex items-center gap-2 px-5 py-2 rounded-xl font-black text-xs transition-all ${activeSubTab === 'fields' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-400'}`}><List size={16} /> لایه‌ها</button></div>
-           <div className="h-6 w-[1px] bg-slate-200 mx-1" />
-           <div className="flex bg-slate-100 p-1 rounded-2xl">{[1, 2, 3].map(p => <button key={p} onClick={() => onPageChange(p)} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${activePageNum === p ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>برگ {p}</button>)}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setTemplate({...template, isLandscape: !template.isLandscape})} className={`px-4 py-2.5 rounded-2xl text-[10px] font-black flex items-center gap-2 transition-all border shadow-sm ${isLandscape ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}><RotateCw size={14} className={isLandscape ? 'rotate-90' : ''} /> {isLandscape ? 'حالت افقی' : 'حالت عمودی'}</button>
-          <button onClick={() => updatePage({ showBackgroundInPrint: !activePage.showBackgroundInPrint })} className={`px-4 py-2.5 rounded-2xl text-[10px] font-black flex items-center gap-2 transition-all border shadow-sm ${activePage.showBackgroundInPrint ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>{activePage.showBackgroundInPrint ? <ImageIcon size={14}/> : <ImageOff size={14}/>} {activePage.showBackgroundInPrint ? 'سربرگ روشن' : 'سربرگ خاموش'}</button>
-          <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="bg-blue-600 text-white px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md"><Upload size={16} /> {uploading ? 'در حال آپلود...' : 'آپلود سربرگ'}</button>
-          <div className="h-6 w-[1px] bg-slate-200 mx-1" />
-          <div className="flex bg-slate-100 p-1 rounded-2xl"><button onClick={() => updatePage({ paperSize: PaperSize.A5 })} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${activePage.paperSize === PaperSize.A5 ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>A5</button><button onClick={() => updatePage({ paperSize: PaperSize.A4 })} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${activePage.paperSize === PaperSize.A4 ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>A4</button></div>
-          <button onClick={handleSaveTemplate} className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-2xl flex items-center gap-2 text-xs font-black shadow-lg shadow-emerald-100 transition-all ml-2"><Save size={16} /> ذخیره قالب</button>
-          <input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f) compressImage(f).then(b => { setUploading(true); const fn = `${Date.now()}.webp`; supabase.storage.from('letterheads').upload(`headers/${fn}`, b).then(() => { supabase.storage.from('letterheads').getPublicUrl(`headers/${fn}`).data.publicUrl.toString() && updatePage({ bgImage: supabase.storage.from('letterheads').getPublicUrl(`headers/${fn}`).data.publicUrl }); setUploading(false); }); }); }} className="hidden" accept="image/*" />
-        </div>
+        <div className="flex items-center gap-3"><div className="flex bg-slate-100 p-1 rounded-2xl"><button onClick={() => setActiveSubTab('design')} className={`flex items-center gap-2 px-5 py-2 rounded-xl font-black text-xs transition-all ${activeSubTab === 'design' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-400'}`}><Layers size={16} /> بوم</button><button onClick={() => setActiveSubTab('fields')} className={`flex items-center gap-2 px-5 py-2 rounded-xl font-black text-xs transition-all ${activeSubTab === 'fields' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'text-slate-400'}`}><List size={16} /> لایه‌ها</button></div><div className="h-6 w-[1px] bg-slate-200 mx-1" /><div className="flex bg-slate-100 p-1 rounded-2xl">{[1, 2, 3].map(p => <button key={p} onClick={() => onPageChange(p)} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${activePageNum === p ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>برگ {p}</button>)}</div></div>
+        <div className="flex items-center gap-2"><button onClick={() => setTemplate({...template, isLandscape: !template.isLandscape})} className={`px-4 py-2.5 rounded-2xl text-[10px] font-black flex items-center gap-2 transition-all border shadow-sm ${isLandscape ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}><RotateCw size={14} className={isLandscape ? 'rotate-90' : ''} /> {isLandscape ? 'حالت افقی' : 'حالت عمودی'}</button><button onClick={() => updatePage({ showBackgroundInPrint: !activePage.showBackgroundInPrint })} className={`px-4 py-2.5 rounded-2xl text-[10px] font-black flex items-center gap-2 transition-all border shadow-sm ${activePage.showBackgroundInPrint ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>{activePage.showBackgroundInPrint ? <ImageIcon size={14}/> : <ImageOff size={14}/>} {activePage.showBackgroundInPrint ? 'سربرگ روشن' : 'سربرگ خاموش'}</button><button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="bg-blue-600 text-white px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md"><Upload size={16} /> {uploading ? 'در حال آپلود...' : 'آپلود سربرگ'}</button><div className="h-6 w-[1px] bg-slate-200 mx-1" /><div className="flex bg-slate-100 p-1 rounded-2xl"><button onClick={() => updatePage({ paperSize: PaperSize.A5 })} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${activePage.paperSize === PaperSize.A5 ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>A5</button><button onClick={() => updatePage({ paperSize: PaperSize.A4 })} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${activePage.paperSize === PaperSize.A4 ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>A4</button></div><button onClick={handleSaveTemplate} className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-2xl flex items-center gap-2 text-xs font-black shadow-lg shadow-emerald-100 transition-all ml-2"><Save size={16} /> ذخیره قالب</button><input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f) compressImage(f).then(b => { setUploading(true); const fn = `${Date.now()}.webp`; supabase.storage.from('letterheads').upload(`headers/${fn}`, b).then(() => { supabase.storage.from('letterheads').getPublicUrl(`headers/${fn}`).data.publicUrl.toString() && updatePage({ bgImage: supabase.storage.from('letterheads').getPublicUrl(`headers/${fn}`).data.publicUrl }); setUploading(false); }); }); }} className="hidden" accept="image/*" /></div>
       </div>
       <div className="flex flex-1 overflow-hidden relative">
         <div className="w-[320px] border-l p-6 overflow-y-auto flex flex-col gap-6 no-print bg-slate-50/20 backdrop-blur-sm z-10 custom-scrollbar">
-          {activeSubTab === 'design' ? (
-            <>
-              <div><h3 className="text-sm font-black text-slate-800 mb-4 flex items-center gap-2"><Layers size={18} className="text-blue-600" /> لیست المان‌ها</h3>
-                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
-                  {fields.map(f => (
-                    <div key={f.id} onClick={() => setSelectedFieldId(f.id)} className={`flex items-center justify-between p-3.5 rounded-xl cursor-pointer transition-all border-2 ${selectedFieldId === f.id ? 'bg-white border-blue-500 shadow-md text-blue-700 font-bold scale-[1.01]' : 'bg-white/50 border-transparent hover:bg-white text-slate-500'}`}>
-                      <span className="text-xs font-black">{f.label}</span>
-                      <div onClick={(e) => { e.stopPropagation(); updateField(f.id, { isActive: !f.isActive }); }} className={`w-5 h-5 rounded flex items-center justify-center border-2 transition-all ${f.isActive ? 'bg-blue-600 border-blue-600' : 'border-slate-200 bg-white'}`}>{f.isActive && <Check size={10} className="text-white" />}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {selectedField && (
-                <div className="bg-blue-50/50 rounded-[28px] p-6 border border-blue-100 shadow-inner animate-in slide-in-from-right-4">
-                  <h4 className="text-xs font-black text-blue-900 mb-5 flex items-center gap-2"><Type size={14} /> ویرایش: {selectedField.label}</h4>
-                  {selectedField.isDropdown && (
-                    <div className="mb-4 space-y-2">
-                      <label className="text-[9px] font-black text-blue-400 uppercase tracking-widest block">گزینه‌ها</label>
-                      <textarea className="w-full bg-white border-none shadow-sm rounded-xl p-3 font-bold text-xs text-blue-700 outline-none h-20 resize-none" value={selectedField.options?.join(', ') || ''} onChange={(e) => updateField(selectedField.id, { options: e.target.value.split(',').map(o => o.trim()).filter(Boolean) })} />
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-3 mb-6">
-                    <div className="space-y-1"><label className="text-[9px] font-black text-blue-400 block text-center uppercase tracking-widest">سایز</label><input type="number" value={selectedField.fontSize} onChange={e => updateField(selectedField.id, { fontSize: Number(e.target.value) })} className="w-full bg-white border-none shadow-sm rounded-xl p-3 text-center font-black text-sm text-blue-700 outline-none" /></div>
-                    <div className="space-y-1"><label className="text-[9px] font-black text-blue-400 block text-center uppercase tracking-widest">عرض</label><input type="number" value={selectedField.width} onChange={e => updateField(selectedField.id, { width: Number(e.target.value) })} className="w-full bg-white border-none shadow-sm rounded-xl p-3 text-center font-black text-sm text-blue-700 outline-none" /></div>
-                  </div>
-                  <div className="mb-6 space-y-2">
-                    <div className="flex justify-between items-center px-1"><label className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1"><RotateCw size={10} /> چرخش</label><span className="text-[10px] font-black text-blue-700">{selectedField.rotation}°</span></div>
-                    <input type="range" min="0" max="360" value={selectedField.rotation} onChange={e => updateField(selectedField.id, { rotation: Number(e.target.value) })} className="w-full accent-blue-600 h-1.5 bg-blue-100 rounded-full cursor-pointer transition-all" />
-                  </div>
-                  <div className="grid grid-cols-3 bg-white p-1 rounded-xl shadow-sm">
-                    {(['L', 'C', 'R'] as TextAlignment[]).map(a => <button key={a} onClick={() => updateField(selectedFieldId, { alignment: a })} className={`py-2 rounded-lg text-xs font-black transition-all ${selectedField.alignment === a ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-blue-600'}`}>{a === 'L' ? <AlignLeft size={14} className="mx-auto" /> : a === 'C' ? <AlignCenter size={14} className="mx-auto" /> : <AlignRight size={14} className="mx-auto" />}</button>)}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="h-full flex flex-col gap-6">
-              <div className="bg-blue-50/50 p-6 rounded-[32px] border border-blue-100">
-                <h3 className="text-xs font-black text-blue-900 mb-4 flex items-center gap-2"><PlusCircle size={14} /> تعریف المان</h3>
-                <div className="space-y-4">
-                  <input type="text" value={newField.label} placeholder="عنوان فیلد..." onChange={e => setNewField({...newField, label: e.target.value})} className="w-full p-3.5 bg-white border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-xs" />
-                  <div className="flex items-center gap-3 px-1"><button type="button" onClick={() => setNewField({...newField, isDropdown: !newField.isDropdown})} className={`w-6 h-6 rounded flex items-center justify-center border-2 transition-all ${newField.isDropdown ? 'bg-blue-600 border-blue-600' : 'border-slate-200 bg-white'}`}>{newField.isDropdown && <Check size={12} className="text-white" />}</button><span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">فیلد آبشاری</span></div>
-                  {newField.isDropdown && (<div className="animate-in slide-in-from-top-2"><textarea value={newField.optionsStr} placeholder="گزینه‌ها..." onChange={e => setNewField({...newField, optionsStr: e.target.value})} className="w-full p-3.5 bg-white border-none rounded-2xl outline-none font-bold text-[10px] h-20 shadow-inner" /></div>)}
-                  <button onClick={handleAddField} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xs shadow-lg shadow-blue-100">افزودن به برگه</button>
-                </div>
-              </div>
-              <div className="space-y-3">{fields.map(f => <div key={f.id} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center gap-3"><span className="text-xs font-bold text-slate-700 flex-1">{f.label}</span><div className="flex gap-1"><button onClick={() => updateField(f.id, { isActive: !f.isActive })} className={`p-1.5 rounded ${f.isActive ? 'text-emerald-500 bg-emerald-50' : 'text-slate-300'}`}><Check size={14}/></button><button onClick={() => updatePage({ fields: fields.filter(xf => xf.id !== f.id) })} className="p-1.5 hover:bg-red-50 rounded text-red-400"><Trash2 size={14}/></button></div></div>)}</div>
-            </div>
-          )}
+          {activeSubTab === 'design' ? (<><div><h3 className="text-sm font-black text-slate-800 mb-4 flex items-center gap-2"><Layers size={18} className="text-blue-600" /> لیست المان‌ها</h3><div className="space-y-2 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">{fields.map(f => (<div key={f.id} onClick={() => setSelectedFieldId(f.id)} className={`flex items-center justify-between p-3.5 rounded-xl cursor-pointer transition-all border-2 ${selectedFieldId === f.id ? 'bg-white border-blue-500 shadow-md text-blue-700 font-bold scale-[1.01]' : 'bg-white/50 border-transparent hover:bg-white text-slate-500'}`}><span className="text-xs font-black">{f.label}</span><div onClick={(e) => { e.stopPropagation(); updateField(f.id, { isActive: !f.isActive }); }} className={`w-5 h-5 rounded flex items-center justify-center border-2 transition-all ${f.isActive ? 'bg-blue-600 border-blue-600' : 'border-slate-200 bg-white'}`}>{f.isActive && <Check size={10} className="text-white" />}</div></div>))}</div></div>{selectedField && (<div className="bg-blue-50/50 rounded-[28px] p-6 border border-blue-100 shadow-inner animate-in slide-in-from-right-4"><h4 className="text-xs font-black text-blue-900 mb-5 flex items-center gap-2"><Type size={14} /> ویرایش: {selectedField.label}</h4>{selectedField.isDropdown && (<div className="mb-4 space-y-2"><label className="text-[9px] font-black text-blue-400 uppercase tracking-widest block">گزینه‌ها</label><textarea className="w-full bg-white border-none shadow-sm rounded-xl p-3 font-bold text-xs text-blue-700 outline-none h-20 resize-none" value={selectedField.options?.join(', ') || ''} onChange={(e) => updateField(selectedField.id, { options: e.target.value.split(',').map(o => o.trim()).filter(Boolean) })} /></div>)}<div className="grid grid-cols-2 gap-3 mb-6"><div className="space-y-1"><label className="text-[9px] font-black text-blue-400 block text-center uppercase tracking-widest">سایز</label><input type="number" value={selectedField.fontSize} onChange={e => updateField(selectedField.id, { fontSize: Number(e.target.value) })} className="w-full bg-white border-none shadow-sm rounded-xl p-3 text-center font-black text-sm text-blue-700 outline-none" /></div><div className="space-y-1"><label className="text-[9px] font-black text-blue-400 block text-center uppercase tracking-widest">عرض</label><input type="number" value={selectedField.width} onChange={e => updateField(selectedField.id, { width: Number(e.target.value) })} className="w-full bg-white border-none shadow-sm rounded-xl p-3 text-center font-black text-sm text-blue-700 outline-none" /></div></div><div className="mb-6 space-y-2"><div className="flex justify-between items-center px-1"><label className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1"><RotateCw size={10} /> چرخش</label><span className="text-[10px] font-black text-blue-700">{selectedField.rotation}°</span></div><input type="range" min="0" max="360" value={selectedField.rotation} onChange={e => updateField(selectedField.id, { rotation: Number(e.target.value) })} className="w-full accent-blue-600 h-1.5 bg-blue-100 rounded-full cursor-pointer transition-all" /></div><div className="grid grid-cols-3 bg-white p-1 rounded-xl shadow-sm">{(['L', 'C', 'R'] as TextAlignment[]).map(a => <button key={a} onClick={() => updateField(selectedFieldId, { alignment: a })} className={`py-2 rounded-lg text-xs font-black transition-all ${selectedField.alignment === a ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-blue-600'}`}>{a === 'L' ? <AlignLeft size={14} className="mx-auto" /> : a === 'C' ? <AlignCenter size={14} className="mx-auto" /> : <AlignRight size={14} className="mx-auto" />}</button>)}</div></div>)}</>) : (<div className="h-full flex flex-col gap-6"><div className="bg-blue-50/50 p-6 rounded-[32px] border border-blue-100"><h3 className="text-xs font-black text-blue-900 mb-4 flex items-center gap-2"><PlusCircle size={14} /> تعریف المان</h3><div className="space-y-4"><input type="text" value={newField.label} placeholder="عنوان فیلد..." onChange={e => setNewField({...newField, label: e.target.value})} className="w-full p-3.5 bg-white border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-xs" /><div className="flex items-center gap-3 px-1"><button type="button" onClick={() => setNewField({...newField, isDropdown: !newField.isDropdown})} className={`w-6 h-6 rounded flex items-center justify-center border-2 transition-all ${newField.isDropdown ? 'bg-blue-600 border-blue-600' : 'border-slate-200 bg-white'}`}>{newField.isDropdown && <Check size={12} className="text-white" />}</button><span className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">فیلد آبشاری</span></div>{newField.isDropdown && (<div className="animate-in slide-in-from-top-2"><textarea value={newField.optionsStr} placeholder="گزینه‌ها..." onChange={e => setNewField({...newField, optionsStr: e.target.value})} className="w-full p-3.5 bg-white border-none rounded-2xl outline-none font-bold text-[10px] h-20 shadow-inner" /></div>)}<button onClick={handleAddField} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xs shadow-lg shadow-blue-100">افزودن به برگه</button></div></div><div className="space-y-3">{fields.map(f => <div key={f.id} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center gap-3"><span className="text-xs font-bold text-slate-700 flex-1">{f.label}</span><div className="flex gap-1"><button onClick={() => updateField(f.id, { isActive: !f.isActive })} className={`p-1.5 rounded ${f.isActive ? 'text-emerald-500 bg-emerald-50' : 'text-slate-300'}`}><Check size={14}/></button><button onClick={() => updatePage({ fields: fields.filter(xf => xf.id !== f.id) })} className="p-1.5 hover:bg-red-50 rounded text-red-400"><Trash2 size={14}/></button></div></div>)}</div></div>)}
         </div>
         <div className="flex-1 bg-slate-200/30 p-8 overflow-auto flex items-start justify-center custom-scrollbar no-print">
           <div ref={canvasRef} className="bg-white shadow-2xl relative border border-slate-200 transition-all origin-top no-print" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px`, transform: 'translateZ(0)', willChange: 'transform', imageRendering: 'high-quality' }}>
-            {canvasBg && (
-              <img 
-                src={canvasBg} 
-                alt="Template" 
-                className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0"
-                style={{ imageRendering: '-webkit-optimize-contrast' }}
-                decoding="sync"
-              />
-            )}
-            {fields.filter(f => f.isActive).map(f => (
-              <div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `translateY(-50%) rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}>
-                <div className={`absolute -inset-2 border-2 rounded-lg transition-all ${selectedFieldId === f.id ? 'border-emerald-400 bg-emerald-400/5 shadow-[0_0_15px_rgba(52,211,153,0.3)]' : 'border-transparent'}`} />
-                <span className={`relative font-black tracking-tight w-full leading-none break-words ${selectedFieldId === f.id ? 'text-emerald-700' : 'text-slate-800 opacity-60'}`}>{f.label}{f.isDropdown && <ChevronDown size={8} className="inline mr-1 opacity-40" />}</span>
-              </div>
-            ))}
+            {canvasBg && (<img src={canvasBg} alt="Template" className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0" style={{ imageRendering: '-webkit-optimize-contrast' }} decoding="sync" />)}
+            {fields.filter(f => f.isActive).map(f => (<div key={f.id} onMouseDown={e => handleDrag(e, f.id)} className={`absolute cursor-move select-none ${selectedFieldId === f.id ? 'z-50' : 'z-10'}`} style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.width}px`, transform: `translateY(-50%) rotate(${f.rotation}deg)`, fontSize: `${f.fontSize}px`, textAlign: f.alignment === 'L' ? 'left' : f.alignment === 'R' ? 'right' : 'center', display: 'flex', alignItems: 'center', justifyContent: f.alignment === 'L' ? 'flex-start' : f.alignment === 'R' ? 'flex-end' : 'center' }}><div className={`absolute -inset-2 border-2 rounded-lg transition-all ${selectedFieldId === f.id ? 'border-emerald-400 bg-emerald-400/5 shadow-[0_0_15px_rgba(52,211,153,0.3)]' : 'border-transparent'}`} /><span className={`relative font-black tracking-tight w-full leading-none break-words ${selectedFieldId === f.id ? 'text-emerald-700' : 'text-slate-800 opacity-60'}`}>{f.label}{f.isDropdown && <ChevronDown size={8} className="inline mr-1 opacity-40" />}</span></div>))}
           </div>
         </div>
       </div>
@@ -775,19 +625,65 @@ const SettingsPanel = ({ template, setTemplate, userPermissions, currentUser }: 
 
 const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { onEdit: (contract: any) => void, perms: string[], template: ContractTemplate, currentUser: any, activeFont: string }) => {
   const [contracts, setContracts] = useState<any[]>([]); const [users, setUsers] = useState<any[]>([]); const [clients, setClients] = useState<ClientProfile[]>([]); const [activeShareId, setActiveShareId] = useState<string | null>(null); const [filterType, setFilterType] = useState<'all' | 'main' | 'extended'>('all'); const [searchTerm, setSearchTerm] = useState(''); const [assignmentModal, setAssignmentModal] = useState<any>(null); const [isExpiryPanelOpen, setIsExpiryPanelOpen] = useState(false);
+  const [timeFilter, setTimeFilter] = useState<'today' | 'yesterday' | 'week' | 'month'>('today'); // New time filter state
   const isAdmin = currentUser?.username === 'admin'; const isStrictEmployee = currentUser?.role_id === 'employee_role';
   const canPrint = isAdmin || perms.includes('archive_print') || isStrictEmployee; const canEdit = isAdmin || perms.includes('archive_edit') || isStrictEmployee; const canDelete = !isStrictEmployee && (isAdmin || perms.includes('archive_delete'));
+  
   useEffect(() => { fetchContracts(); fetchUsers(); fetchClients(); }, [currentUser]);
   const fetchUsers = async () => { const { data } = await supabase.from('users').select('*'); if (data) setUsers(data); };
   const fetchClients = async () => { const { data } = await supabase.from('clients').select('*'); if (data) setClients(data); };
   const fetchContracts = async () => { let query = supabase.from('contracts').select('*'); if (isStrictEmployee) query = query.eq('assigned_to', currentUser.id); const { data } = await query.order('timestamp', { ascending: false }); if (data) setContracts(data); };
+  
+  const checkTimeScope = (dateStr: string, scope: string) => {
+    if (!dateStr) return false;
+    const date = new Date(dateStr);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfYesterday = new Date(startOfToday); startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    const startOfWeek = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate() - now.getDay());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    if (scope === 'today') return date >= startOfToday;
+    if (scope === 'yesterday') return date >= startOfYesterday && date < startOfToday;
+    if (scope === 'week') return date >= startOfWeek;
+    if (scope === 'month') return date >= startOfMonth;
+    return true;
+  };
+
+  const filteredContracts = useMemo(() => {
+    return contracts.filter(c => {
+        const matchesType = (filterType === 'all' || (filterType === 'main' ? !c.is_extended : c.is_extended));
+        const matchesSearch = (!searchTerm || c.client_name.toLowerCase().includes(searchTerm.toLowerCase()) || (clients.find(cl => cl.id === c.client_id)?.tazkira || '').toLowerCase().includes(searchTerm.toLowerCase()));
+        const matchesTime = checkTimeScope(c.timestamp, timeFilter);
+        return matchesType && matchesSearch && matchesTime;
+    });
+  }, [contracts, filterType, searchTerm, clients, timeFilter]);
+
   const expiredContracts = useMemo(() => { const now = new Date(); return contracts.filter(c => c.expiry_date && new Date(c.expiry_date) < now); }, [contracts]);
-  const filteredContracts = useMemo(() => contracts.filter(c => (filterType === 'all' || (filterType === 'main' ? !c.is_extended : c.is_extended)) && (!searchTerm || c.client_name.toLowerCase().includes(searchTerm.toLowerCase()) || (clients.find(cl => cl.id === c.client_id)?.tazkira || '').toLowerCase().includes(searchTerm.toLowerCase()))), [contracts, filterType, searchTerm, clients]);
+  
   return (
     <div className="max-w-5xl mx-auto py-12 animate-in fade-in zoom-in-95 duration-700 no-print h-full flex flex-col">
-      <div className="flex flex-col md:flex-row justify-between items-center mb-10 px-4 gap-6"><div><h2 className="text-3xl font-black text-slate-800 tracking-tight">{isStrictEmployee ? 'قراردادهای ارجاعی من' : 'بایگانی اسناد'}</h2><p className="text-xs font-bold text-slate-400 mt-1">{isStrictEmployee ? 'قراردادهای تحت مسئولیت شما' : 'فیلترینگ و مدیریت اسناد ثبت شده'}</p></div><div className="flex items-center gap-4 w-full md:w-auto">{!isStrictEmployee && (<div className="relative"><button onClick={() => setIsExpiryPanelOpen(!isExpiryPanelOpen)} className="p-3.5 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-red-500 hover:shadow-lg transition-all relative"><Bell size={20} />{expiredContracts.length > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">{expiredContracts.length}</span>)}</button>{isExpiryPanelOpen && (<div className="absolute top-full left-0 mt-3 w-72 bg-white border border-slate-100 shadow-2xl rounded-3xl z-[150] animate-in slide-in-from-top-2 overflow-hidden"><div className="bg-red-50 p-4 border-b border-red-100 flex items-center justify-between"><span className="text-[10px] font-black text-red-700 uppercase">منقضی شده</span><X size={14} className="text-red-400 cursor-pointer" onClick={() => setIsExpiryPanelOpen(false)}/></div><div className="max-h-64 overflow-y-auto custom-scrollbar">{expiredContracts.length > 0 ? (expiredContracts.map(c => (<div key={c.id} className="p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => { onEdit(c); setIsExpiryPanelOpen(false); }}><p className="font-black text-xs text-slate-800 mb-1">{c.client_name}</p><p className="text-[9px] font-bold text-red-500">تاریخ انقضا: {new Date(c.expiry_date).toLocaleDateString('fa-IR')}</p></div>))) : (<div className="p-8 text-center text-[10px] font-bold text-slate-400 italic">موردی یافت نشد.</div>)}</div></div>)}</div>)}{!isStrictEmployee && (<div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">{[{id:'all',label:'همه'},{id:'main',label:'اصلی'},{id:'extended',label:'تمدیدی'}].map(t => (<button key={t.id} onClick={() => setFilterType(t.id as any)} className={`px-5 py-2 rounded-xl text-[10px] font-black transition-all ${filterType === t.id ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>{t.label}</button>))}</div>)}<div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 px-6 flex-1 md:flex-initial"><Search size={18} className="text-slate-300" /><input type="text" placeholder="جستجوی پلاک یا نام..." className="outline-none bg-transparent text-sm font-bold w-full md:w-48" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div></div></div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pb-24">{filteredContracts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredContracts.map(contract => { const assignedUser = users.find(u => u.id === contract.assigned_to); const isExpired = contract.expiry_date && new Date(contract.expiry_date) < new Date(); const clientPlate = clients.find(cl => cl.id === contract.client_id)?.tazkira || '---';
-              return (<div key={contract.id} className={`bg-white p-8 rounded-[40px] shadow-sm border ${isExpired ? 'border-red-100 ring-2 ring-red-50/50' : 'border-slate-100'} hover:shadow-xl transition-all group relative overflow-hidden`}>{contract.is_extended && <div className="absolute top-4 left-4 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black z-10">تمدید شده</div>}{isExpired && !contract.is_extended && <div className="absolute top-4 left-4 bg-red-100 text-red-700 px-3 py-1 rounded-lg text-[10px] font-black z-10">پایان اعتبار</div>}<div className="flex justify-between items-start mb-6"><div className="relative"><div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black ${isExpired ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>{(contract.client_name || 'N')[0]}</div>{assignedUser && (<div className="absolute -bottom-1 -right-1 w-6 h-6 bg-slate-900 border-2 border-white rounded-full flex items-center justify-center text-[8px] text-white font-black" title={`ارجاع شده به: ${assignedUser.username}`}>{assignedUser.username[0].toUpperCase()}</div>)}</div><div className="flex gap-2"><div className="relative"><button onClick={() => setActiveShareId(activeShareId === contract.id ? null : contract.id)} className="text-slate-300 hover:text-emerald-500 transition-all p-2 bg-slate-50 rounded-xl"><Share2 size={20}/></button>{activeShareId === contract.id && (<div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[100] animate-in zoom-in-95 p-2 overflow-hidden"><button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, true); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-emerald-50 text-emerald-600 rounded-xl transition-all text-right"><MessageCircle size={18}/><span className="text-[11px] font-black">ارسال در واتساپ</span></button><button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, false); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 text-blue-600 rounded-xl transition-all text-right border-t border-slate-50"><Download size={18}/><span className="text-[11px] font-black">دانلود پی‌دی‌اف</span></button></div>)}</div>{isAdmin && <button onClick={() => setAssignmentModal(contract)} className={`p-2 rounded-xl transition-all ${contract.assigned_to ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-300 hover:text-blue-600'}`}><UserCheck size={20}/></button>}{canEdit && <button onClick={() => onEdit(contract)} className="text-slate-300 hover:text-amber-500 transition-all p-2 bg-slate-50 rounded-xl"><Pencil size={20}/></button>}{canPrint && <button onClick={() => { onEdit(contract); triggerProfessionalPrint(template.isLandscape); }} className="text-slate-300 hover:text-blue-600 transition-all p-2 bg-slate-50 rounded-xl"><Printer size={20}/></button>}{canDelete && <button onClick={() => { if(window.confirm('حذف شود؟')) supabase.from('contracts').delete().eq('id', contract.id).then(() => fetchContracts()); }} className="text-slate-300 hover:text-red-500 transition-all p-2 bg-slate-50 rounded-xl"><Trash2 size={20}/></button>}</div></div><h4 className={`font-black text-xl mb-2 ${isExpired ? 'text-red-800' : 'text-slate-800'}`}>{contract.client_name}</h4><div className="flex flex-col gap-1"><p className="text-[10px] text-slate-400 font-black flex items-center gap-1"><CreditCard size={12}/> پلاک: {clientPlate}</p><p className="text-[9px] text-slate-300 font-medium flex items-center gap-1"><Clock size={12}/> {new Date(contract.timestamp).toLocaleDateString('fa-IR')}</p>{contract.expiry_date && (<p className={`text-[9px] font-black mt-1 flex items-center gap-1 ${isExpired ? 'text-red-500' : 'text-blue-400'}`}><CalendarClock size={12}/> سررسید: {new Date(contract.expiry_date).toLocaleDateString('fa-IR')}</p>)}</div></div>); })}</div>) : (<div className="text-center py-24 flex flex-col items-center gap-4"><Archive size={64} className="text-slate-100" /><h3 className="text-2xl font-black text-slate-300">{isStrictEmployee ? 'هیچ قراردادی به شما ارجاع نشده است.' : 'موردی یافت نشد.'}</h3></div>)}</div>
+      <div className="flex flex-col md:flex-row justify-between items-center mb-10 px-4 gap-6">
+        <div><h2 className="text-3xl font-black text-slate-800 tracking-tight">{isStrictEmployee ? 'قراردادهای ارجاعی من' : 'بایگانی اسناد'}</h2><p className="text-xs font-bold text-slate-400 mt-1">{isStrictEmployee ? 'قراردادهای تحت مسئولیت شما' : 'فیلترینگ و مدیریت اسناد ثبت شده'}</p></div>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          {/* Time Filter Panel */}
+          <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
+            {[{id:'today',label:'امروز'},{id:'yesterday',label:'دیروز'},{id:'week',label:'هفته'},{id:'month',label:'ماه'}].map(t => (
+              <button key={t.id} onClick={() => setTimeFilter(t.id as any)} className={`px-4 py-2 rounded-xl text-[9px] font-black transition-all ${timeFilter === t.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>{t.label}</button>
+            ))}
+          </div>
+
+          {!isStrictEmployee && (<div className="relative"><button onClick={() => setIsExpiryPanelOpen(!isExpiryPanelOpen)} className="p-3.5 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-red-500 hover:shadow-lg transition-all relative"><Bell size={20} />{expiredContracts.length > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">{expiredContracts.length}</span>)}</button>{isExpiryPanelOpen && (<div className="absolute top-full left-0 mt-3 w-72 bg-white border border-slate-100 shadow-2xl rounded-3xl z-[150] animate-in slide-in-from-top-2 overflow-hidden"><div className="bg-red-50 p-4 border-b border-red-100 flex items-center justify-between"><span className="text-[10px] font-black text-red-700 uppercase">منقضی شده</span><X size={14} className="text-red-400 cursor-pointer" onClick={() => setIsExpiryPanelOpen(false)}/></div><div className="max-h-64 overflow-y-auto custom-scrollbar">{expiredContracts.length > 0 ? (expiredContracts.map(c => (<div key={c.id} className="p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => { onEdit(c); setIsExpiryPanelOpen(false); }}><p className="font-black text-xs text-slate-800 mb-1">{c.client_name}</p><p className="text-[9px] font-bold text-red-500">تاریخ انقضا: {new Date(c.expiry_date).toLocaleDateString('fa-IR')}</p></div>))) : (<div className="p-8 text-center text-[10px] font-bold text-slate-400 italic">موردی یافت نشد.</div>)}</div></div>)}</div>)}{!isStrictEmployee && (<div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">{[{id:'all',label:'همه'},{id:'main',label:'اصلی'},{id:'extended',label:'تمدیدی'}].map(t => (<button key={t.id} onClick={() => setFilterType(t.id as any)} className={`px-5 py-2 rounded-xl text-[10px] font-black transition-all ${filterType === t.id ? 'bg-slate-900 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>{t.label}</button>))}</div>)}<div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3 px-6 flex-1 md:flex-initial"><Search size={18} className="text-slate-300" /><input type="text" placeholder="جستجوی پلاک یا نام..." className="outline-none bg-transparent text-sm font-bold w-full md:w-48" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pb-24">{filteredContracts.length > 0 ? (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredContracts.map(contract => { 
+              const assignedUser = users.find(u => u.id === contract.assigned_to); 
+              const isExpired = contract.expiry_date && new Date(contract.expiry_date) < new Date(); 
+              const clientPlate = clients.find(cl => cl.id === contract.client_id)?.tazkira || '---';
+              // Logic to check if printed within current time filter scope
+              const isPrintedInScope = contract.last_printed_at && checkTimeScope(contract.last_printed_at, timeFilter);
+
+              return (<div key={contract.id} className={`bg-white p-8 rounded-[40px] shadow-sm border ${isExpired ? 'border-red-100 ring-2 ring-red-50/50' : 'border-slate-100'} hover:shadow-xl transition-all group relative overflow-hidden`}>{contract.is_extended && <div className="absolute top-4 left-4 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-lg text-[10px] font-black z-10">تمدید شده</div>}{isExpired && !contract.is_extended && <div className="absolute top-4 left-4 bg-red-100 text-red-700 px-3 py-1 rounded-lg text-[10px] font-black z-10">پایان اعتبار</div>}<div className="flex justify-between items-start mb-6"><div className="relative"><div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black ${isExpired ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>{(contract.client_name || 'N')[0]}</div>{assignedUser && (<div className="absolute -bottom-1 -right-1 w-6 h-6 bg-slate-900 border-2 border-white rounded-full flex items-center justify-center text-[8px] text-white font-black" title={`ارجاع شده به: ${assignedUser.username}`}>{assignedUser.username[0].toUpperCase()}</div>)}</div><div className="flex gap-2"><div className="relative"><button onClick={() => setActiveShareId(activeShareId === contract.id ? null : contract.id)} className="text-slate-300 hover:text-emerald-500 transition-all p-2 bg-slate-50 rounded-xl"><Share2 size={20}/></button>{activeShareId === contract.id && (<div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 shadow-2xl rounded-2xl z-[100] animate-in zoom-in-95 p-2 overflow-hidden"><button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, true); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-emerald-50 text-emerald-600 rounded-xl transition-all text-right"><MessageCircle size={18}/><span className="text-[11px] font-black">ارسال در واتساپ</span></button><button onClick={() => { handleExportPDF(template, contract.form_data, contract.client_name, clientPlate, activeFont, false); setActiveShareId(null); }} className="w-full flex items-center gap-3 p-3 hover:bg-blue-50 text-blue-600 rounded-xl transition-all text-right border-t border-slate-50"><Download size={18}/><span className="text-[11px] font-black">دانلود پی‌دی‌اف</span></button></div>)}</div>{isAdmin && <button onClick={() => setAssignmentModal(contract)} className={`p-2 rounded-xl transition-all ${contract.assigned_to ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-300 hover:text-blue-600'}`}><UserCheck size={20}/></button>}{canEdit && <button onClick={() => onEdit(contract)} className="text-slate-300 hover:text-amber-500 transition-all p-2 bg-slate-50 rounded-xl"><Pencil size={20}/></button>}{canPrint && <button onClick={() => { onEdit(contract); triggerProfessionalPrint(template.isLandscape, contract.id).then(() => fetchContracts()); }} className={`p-2 rounded-xl transition-all ${isPrintedInScope ? 'bg-slate-900 text-white shadow-lg scale-105' : 'bg-slate-50 text-slate-300 hover:text-blue-600'}`} title={isPrintedInScope ? 'امروز چاپ شده است' : 'آماده چاپ'}><Printer size={20}/></button>}{canDelete && <button onClick={() => { if(window.confirm('حذف شود؟')) supabase.from('contracts').delete().eq('id', contract.id).then(() => fetchContracts()); }} className="text-slate-300 hover:text-red-500 transition-all p-2 bg-slate-50 rounded-xl"><Trash2 size={20}/></button>}</div></div><h4 className={`font-black text-xl mb-2 ${isExpired ? 'text-red-800' : 'text-slate-800'}`}>{contract.client_name}</h4><div className="flex flex-col gap-1"><p className="text-[10px] text-slate-400 font-black flex items-center gap-1"><CreditCard size={12}/> پلاک: {clientPlate}</p><p className="text-[9px] text-slate-300 font-medium flex items-center gap-1"><Clock size={12}/> {new Date(contract.timestamp).toLocaleDateString('fa-IR')}</p>{contract.expiry_date && (<p className={`text-[9px] font-black mt-1 flex items-center gap-1 ${isExpired ? 'text-red-500' : 'text-blue-400'}`}><CalendarClock size={12}/> سررسید: {new Date(contract.expiry_date).toLocaleDateString('fa-IR')}</p>)}</div></div>); })}</div>) : (<div className="text-center py-24 flex flex-col items-center gap-4"><Archive size={64} className="text-slate-100" /><h3 className="text-2xl font-black text-slate-300">{isStrictEmployee ? 'هیچ قراردادی به شما ارجاع نشده است.' : 'موردی یافت نشد.'}</h3></div>)}</div>
       {assignmentModal && (<div className="fixed inset-0 z-[1000] flex items-center justify-center p-6"><div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xl" onClick={() => setAssignmentModal(null)} /><div className="bg-white w-full max-w-md rounded-[48px] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 border border-white"><div className="p-10 bg-slate-900 text-white flex justify-between items-center"><div><h3 className="text-2xl font-black flex items-center gap-3"><UserCheck size={24}/> ارجاع پرونده</h3></div><button onClick={() => setAssignmentModal(null)} className="p-2 hover:bg-white/20 rounded-full transition-all"><X size={20}/></button></div><div className="p-8 max-h-[400px] overflow-y-auto custom-scrollbar"><div className="space-y-3"><button onClick={() => supabase.from('contracts').update({ assigned_to: null }).eq('id', assignmentModal.id).then(() => { setAssignmentModal(null); fetchContracts(); })} className={`w-full p-5 rounded-3xl border-2 flex items-center justify-between ${!assignmentModal.assigned_to ? 'border-blue-600 bg-blue-50' : 'border-slate-50 hover:bg-slate-50'}`}><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center"><Shield size={18} className="text-slate-400"/></div><span className="font-black text-slate-700">بدون ارجاع</span></div>{!assignmentModal.assigned_to && <CheckCircle2 size={20} className="text-blue-600"/>}</button>{users.filter(u => u.username !== 'admin').map(user => (<button key={user.id} onClick={() => supabase.from('contracts').update({ assigned_to: user.id }).eq('id', assignmentModal.id).then(() => { setAssignmentModal(null); fetchContracts(); })} className={`w-full p-5 rounded-3xl border-2 flex items-center justify-between ${assignmentModal.assigned_to === user.id ? 'border-blue-600 bg-blue-50' : 'border-slate-50 hover:bg-slate-50'}`}><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 font-black">{user.username?.[0]?.toUpperCase()}</div><span className="font-black text-slate-700">{user.username}</span></div>{assignmentModal.assigned_to === user.id && <CheckCircle2 size={20} className="text-blue-600"/>}</button>))}</div></div></div></div>)}
     </div>
   );
@@ -808,9 +704,7 @@ export default function App() {
   };
   const userPermissions = useMemo(() => { if (!currentUser) return []; const role = roles.find((r: any) => r.id === (currentUser.role_id || currentUser.roleId)); return role ? role.perms : []; }, [currentUser, roles]);
   const isAdmin = currentUser?.username === 'admin'; const isStrictEmployee = currentUser?.role_id === 'employee_role';
-  
   const isLandscapeMode = !!template.isLandscape && activeTab === 'workspace';
-
   if (initializing) return (<div className="fixed inset-0 bg-slate-900 flex items-center justify-center flex-col gap-6"><div className="animate-bounce bg-white p-4 rounded-3xl shadow-2xl"><AsraLogo size={60} /></div><div className="text-white font-black text-sm animate-pulse">در حال آماده‌سازی...</div></div>);
   if (!currentUser) return <LoginForm onLogin={(u) => { setCurrentUser(u); localStorage.setItem('asra_gps_session_v2', JSON.stringify(u)); }} />;
   return (
@@ -837,4 +731,3 @@ export default function App() {
     </div>
   );
 }
-
