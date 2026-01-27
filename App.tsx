@@ -373,14 +373,9 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
   const isLandscape = !!template.isLandscape;
   const doc = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
   const pagesToProcess = template.pages || [];
-  
-  // Ensure fonts are loaded before starting canvas generation
-  await document.fonts.ready;
-
   for (let i = 0; i < pagesToProcess.length; i++) {
     const page = pagesToProcess[i]; const activeFields = page.fields.filter(f => f.isActive); if (activeFields.length === 0 && i > 0) continue;
     const pageEl = document.createElement('div');
-    pageEl.dir = 'rtl'; // Explicit direction for coordinate alignment
     pageEl.style.width = isLandscape ? '297mm' : '210mm';
     pageEl.style.height = isLandscape ? '210mm' : '297mm';
     pageEl.style.position = 'relative'; pageEl.style.overflow = 'hidden'; pageEl.style.backgroundColor = 'white';
@@ -398,12 +393,10 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
       fieldEl.style.alignItems = 'center'; 
       fieldEl.style.justifyContent = field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center'; 
       fieldEl.style.fontSize = `${field.fontSize}px`; 
-      fieldEl.style.lineHeight = '1.2'; // Matches Professional Printing Engine
+      fieldEl.style.lineHeight = '1'; 
       fieldEl.style.fontFamily = activeFont || 'Vazirmatn'; 
       fieldEl.style.fontWeight = '900'; 
       fieldEl.style.color = 'black'; 
-      fieldEl.style.padding = '0'; 
-      fieldEl.style.margin = '0';
       fieldEl.style.textAlign = field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center'; 
       fieldEl.style.transform = `translateY(-50%) rotate(${field.rotation}deg)`; 
       fieldEl.style.whiteSpace = 'nowrap'; 
@@ -439,7 +432,7 @@ const PrintLayout = ({ template, formData, activeFont }: { template: ContractTem
       {template.pages.map((page, index) => {
         const activeFields = page.fields?.filter(f => f.isActive) || []; if (activeFields.length === 0 && index > 0) return null;
         return (
-          <div key={`print-page-${index}`} className="print-page-unit" style={{ width: isLandscape ? (isMasterA4 ? '297mm' : '210mm') : (isMasterA4 ? '210mm' : '148mm'), height: isLandscape ? (isMasterA4 ? '148mm' : '148mm') : (isMasterA4 ? '297mm' : '210mm'), backgroundImage: page.showBackgroundInPrint && localBgs[page.pageNumber] ? `url(${localBgs[page.pageNumber]})` : 'none', backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat', imageRendering: 'crisp-edges' }}>
+          <div key={`print-page-${index}`} className="print-page-unit" style={{ width: isLandscape ? (isMasterA4 ? '297mm' : '210mm') : (isMasterA4 ? '210mm' : '148mm'), height: isLandscape ? (isMasterA4 ? '210mm' : '148mm') : (isMasterA4 ? '297mm' : '210mm'), backgroundImage: page.showBackgroundInPrint && localBgs[page.pageNumber] ? `url(${localBgs[page.pageNumber]})` : 'none', backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat', imageRendering: 'crisp-edges' }}>
             {activeFields.map((field) => (<div key={`field-${field.id}`} className="print-field" style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width}px`, transform: `translateY(-50%) rotate(${field.rotation}deg)`, fontSize: `${field.fontSize}px`, textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center', justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center' }}><span className="print-text-content" style={{ fontFamily: activeFont || 'Vazirmatn' }}>{formData[field.key] || ''}</span></div>))}
           </div>
         );
