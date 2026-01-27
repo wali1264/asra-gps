@@ -367,46 +367,96 @@ const AccountingPanel = ({ perms, currentUser }: { perms: string[], currentUser:
 const handleExportPDF = async (template: ContractTemplate, formData: Record<string, string>, clientName: string, plate: string, activeFont: string, isWhatsApp: boolean = false) => {
   const container = document.getElementById('pdf-export-container');
   if (!container) return;
+  
   showToast('در حال آماده‌سازی فایل هوشمند...');
+  
+  // Ensure all fonts are fully loaded to prevent Right-Shift issues
+  await document.fonts.ready;
+  
   container.innerHTML = '';
   const { jsPDF } = (window as any).jspdf;
   const isLandscape = !!template.isLandscape;
+  
+  // Update export container width to match rendering target for better precision
+  container.style.width = isLandscape ? '297mm' : '210mm';
+  
   const doc = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
   const pagesToProcess = template.pages || [];
+  
   for (let i = 0; i < pagesToProcess.length; i++) {
-    const page = pagesToProcess[i]; const activeFields = page.fields.filter(f => f.isActive); if (activeFields.length === 0 && i > 0) continue;
+    const page = pagesToProcess[i]; 
+    const activeFields = page.fields.filter(f => f.isActive); 
+    if (activeFields.length === 0 && i > 0) continue;
+    
     const pageEl = document.createElement('div');
     pageEl.style.width = isLandscape ? '297mm' : '210mm';
     pageEl.style.height = isLandscape ? '210mm' : '297mm';
-    pageEl.style.position = 'relative'; pageEl.style.overflow = 'hidden'; pageEl.style.backgroundColor = 'white';
+    pageEl.style.position = 'relative'; 
+    pageEl.style.overflow = 'hidden'; 
+    pageEl.style.backgroundColor = 'white';
+    
     if (page.bgImage && page.showBackgroundInPrint) {
-      const bgImg = document.createElement('img'); bgImg.src = page.bgImage; bgImg.style.position = 'absolute'; bgImg.style.top = '0'; bgImg.style.left = '0'; bgImg.style.width = '100%'; bgImg.style.height = '100%'; bgImg.style.objectFit = 'fill'; bgImg.crossOrigin = 'anonymous'; pageEl.appendChild(bgImg);
+      const bgImg = document.createElement('img'); 
+      bgImg.src = page.bgImage; 
+      bgImg.style.position = 'absolute'; 
+      bgImg.style.top = '0'; 
+      bgImg.style.left = '0'; 
+      bgImg.style.width = '100%'; 
+      bgImg.style.height = '100%'; 
+      bgImg.style.objectFit = 'fill'; 
+      bgImg.crossOrigin = 'anonymous'; 
+      pageEl.appendChild(bgImg);
     }
+    
     activeFields.forEach(field => {
       const fieldEl = document.createElement('div'); 
       fieldEl.style.position = 'absolute'; 
       fieldEl.style.left = `${field.x}%`; 
       fieldEl.style.top = `${field.y}%`; 
       fieldEl.style.width = `${field.width}px`; 
-      fieldEl.style.height = `${field.height || 30}px`; 
+      
+      // Fix: Use 'auto' height and precise line-height matching the print engine
+      fieldEl.style.height = 'auto'; 
+      fieldEl.style.lineHeight = '1.2';
+      
       fieldEl.style.display = 'flex'; 
       fieldEl.style.alignItems = 'center'; 
       fieldEl.style.justifyContent = field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center'; 
+      
       fieldEl.style.fontSize = `${field.fontSize}px`; 
-      fieldEl.style.lineHeight = '1'; 
       fieldEl.style.fontFamily = activeFont || 'Vazirmatn'; 
       fieldEl.style.fontWeight = '900'; 
       fieldEl.style.color = 'black'; 
       fieldEl.style.textAlign = field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center'; 
+      
+      // Fix: Stable transform for html2canvas
       fieldEl.style.transform = `translateY(-50%) rotate(${field.rotation}deg)`; 
+      fieldEl.style.transformOrigin = 'center';
+      
       fieldEl.style.whiteSpace = 'nowrap'; 
+      fieldEl.style.padding = '0';
+      fieldEl.style.margin = '0';
+      
       fieldEl.innerText = formData[field.key] || ''; 
       pageEl.appendChild(fieldEl);
     });
+    
     container.appendChild(pageEl);
-    const canvas = await (window as any).html2canvas(pageEl, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
-    const imgData = canvas.toDataURL('image/jpeg', 0.95); if (i > 0) doc.addPage(); doc.addImage(imgData, 'JPEG', 0, 0, isLandscape ? 297 : 210, isLandscape ? 210 : 297); container.removeChild(pageEl);
+    
+    // Using high scale for professional quality
+    const canvas = await (window as any).html2canvas(pageEl, { 
+      scale: 3, 
+      useCORS: true, 
+      backgroundColor: '#ffffff',
+      logging: false 
+    });
+    
+    const imgData = canvas.toDataURL('image/jpeg', 0.95); 
+    if (i > 0) doc.addPage(); 
+    doc.addImage(imgData, 'JPEG', 0, 0, isLandscape ? 297 : 210, isLandscape ? 210 : 297); 
+    container.removeChild(pageEl);
   }
+  
   const fileName = `Asra_GPS_${clientName.replace(/\s+/g, '_')}_${plate.replace(/\s+/g, '_')}.pdf`;
   if (isWhatsApp && navigator.share) {
     const pdfBlob = doc.output('blob'); const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
@@ -635,7 +685,7 @@ const SettingsPanel = ({ template, setTemplate, userPermissions, currentUser }: 
   const [activeSubTab, setActiveSubTab] = useState<'design' | 'fields'>('design'); const [activePage, setActivePage] = useState(1); const [isDesignUnlocked, setIsDesignUnlocked] = useState(false);
   return (
     <div className="flex flex-col h-[calc(100vh-40px)] animate-in fade-in duration-500 no-print">
-      <div className="flex items-center justify-center gap-4 py-6 bg-white border-b border-slate-100 no-print">{(isAdmin || userPermissions.includes('settings_users')) && <button onClick={() => setMainTab('users')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'users' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><User size={18}/> مدیریت کاربران</button>}{(isAdmin || userPermissions.includes('settings_boom')) && <button onClick={() => setMainTab('boom')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'boom' ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Layers size={18}/> مدیریت بوم طراحی</button>}{(isAdmin || userPermissions.includes('settings_backup')) && <button onClick={() => setMainTab('backup')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'backup' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Database size={18}/> پشتیبان‌گیری</button>}</div>
+      <div className="flex items-center justify-center gap-4 py-6 bg-white border-b border-slate-100 no-print">{(isAdmin || userPermissions.includes('settings_users')) && <button onClick={() => setMainTab('users')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'users' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><User size={18}/> مدیریت کاربران</button>{(isAdmin || userPermissions.includes('settings_boom')) && <button onClick={() => setMainTab('boom')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'boom' ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Layers size={18}/> مدیریت بوم طراحی</button>{(isAdmin || userPermissions.includes('settings_backup')) && <button onClick={() => setMainTab('backup')} className={`flex items-center gap-3 px-8 py-3.5 rounded-[20px] font-black text-sm transition-all ${mainTab === 'backup' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}><Database size={18}/> پشتیبان‌گیری</button>}</div>
       <div className="flex-1 overflow-hidden no-print">{mainTab === 'boom' && (<div className="h-full">{isDesignUnlocked || isAdmin ? (<DesktopSettings template={template} setTemplate={setTemplate} activePageNum={activePage} activeSubTab={activeSubTab} setActiveSubTab={setActiveSubTab} onPageChange={setActivePage} />) : (<DesignGate onUnlock={() => setIsDesignUnlocked(true)} onCancel={() => setMainTab('users')} />)}</div>)}{mainTab === 'users' && <UsersManager currentUser={currentUser} />}{mainTab === 'backup' && <BackupManager />}</div>
     </div>
   );
