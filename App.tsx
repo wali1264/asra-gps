@@ -377,6 +377,9 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
   const { jsPDF } = (window as any).jspdf;
   const isLandscape = !!template.isLandscape;
   
+  // Update export container width to match rendering target for better precision
+  container.style.width = isLandscape ? '297mm' : '210mm';
+  
   const doc = new jsPDF({ orientation: isLandscape ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
   const pagesToProcess = template.pages || [];
   
@@ -412,7 +415,7 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
       fieldEl.style.top = `${field.y}%`; 
       fieldEl.style.width = `${field.width}px`; 
       
-      // Fix: Use 'auto' height and precise line-height matching the print engine (line-height: 1.2 from index.html)
+      // Fix: Use 'auto' height and precise line-height matching the print engine
       fieldEl.style.height = 'auto'; 
       fieldEl.style.lineHeight = '1.2';
       
@@ -426,7 +429,7 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
       fieldEl.style.color = 'black'; 
       fieldEl.style.textAlign = field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center'; 
       
-      // Fix: Precise transform for html2canvas with transformOrigin centered
+      // Fix: Stable transform for html2canvas
       fieldEl.style.transform = `translateY(-50%) rotate(${field.rotation}deg)`; 
       fieldEl.style.transformOrigin = 'center';
       
@@ -440,6 +443,7 @@ const handleExportPDF = async (template: ContractTemplate, formData: Record<stri
     
     container.appendChild(pageEl);
     
+    // Using high scale for professional quality
     const canvas = await (window as any).html2canvas(pageEl, { 
       scale: 3, 
       useCORS: true, 
