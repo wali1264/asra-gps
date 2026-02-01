@@ -480,7 +480,6 @@ const VisualCanvasPage = ({ page, formData, setFormData, zoom, activeFieldKey, s
   const [localBg, setLocalBg] = useState<string>(''); const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   useEffect(() => { if (page.bgImage) cacheImage(page.bgImage).then(url => setLocalBg(url)); }, [page.bgImage]);
   useEffect(() => { const activeFields = (page.fields || []).filter(f => f.isActive && f.isDropdown && f.options && f.options.length > 0); let updated = false; const newFormData = { ...formData }; activeFields.forEach(f => { if (!newFormData[f.key]) { newFormData[f.key] = f.options![0]; updated = true; } }); if (updated) setFormData(newFormData); }, [page.fields]);
-  const activeFields = (page.fields || []).filter(f => f.isActive);
   const handleKeyDown = (e: React.KeyboardEvent, currentField: ContractField) => { if (e.key === 'Enter') { e.preventDefault(); const allActiveFields = page.fields.filter(f => f.isActive); const currentIndex = allActiveFields.findIndex(f => f.key === currentField.key); if (currentIndex < allActiveFields.length - 1) { const nextField = allActiveFields[currentIndex + 1]; setActiveFieldKey(nextField.key); if (nextField.isDropdown) setOpenDropdown(nextField.key); else { setOpenDropdown(null); setTimeout(() => { const nextInput = document.querySelector(`input[data-field-key="${nextField.key}"]`) as HTMLInputElement; nextInput?.focus(); }, 10); } } } };
   const isA4 = page.paperSize === PaperSize.A4; 
   const baseWidth = isLandscape ? (isA4 ? 842 : 595) : (isA4 ? 595 : 420);
@@ -664,7 +663,7 @@ const SettingsPanel = ({ template, setTemplate, userPermissions, currentUser }: 
 
 const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { onEdit: (contract: any) => void, perms: string[], template: ContractTemplate, currentUser: any, activeFont: string }) => {
   const [contracts, setContracts] = useState<any[]>([]); const [users, setUsers] = useState<any[]>([]); const [clients, setClients] = useState<ClientProfile[]>([]); const [activeShareId, setActiveShareId] = useState<string | null>(null); const [filterType, setFilterType] = useState<'all' | 'main' | 'extended'>('all'); const [searchTerm, setSearchTerm] = useState(''); const [assignmentModal, setAssignmentModal] = useState<any>(null); const [isExpiryPanelOpen, setIsExpiryPanelOpen] = useState(false);
-  const [timeFilter, setTimeFilter] = useState<'today' | 'yesterday' | 'week' | 'month'>('today'); // New time filter state
+  const [timeFilter, setTimeFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'all'>('all'); // Changed default to 'all'
   const isAdmin = currentUser?.username === 'admin'; const isStrictEmployee = currentUser?.role_id === 'employee_role';
   const canPrint = isAdmin || perms.includes('archive_print') || isStrictEmployee; const canEdit = isAdmin || perms.includes('archive_edit') || isStrictEmployee; const canDelete = !isStrictEmployee && (isAdmin || perms.includes('archive_delete'));
   
@@ -674,6 +673,7 @@ const ArchivePanel = ({ onEdit, perms, template, currentUser, activeFont }: { on
   const fetchContracts = async () => { let query = supabase.from('contracts').select('*'); if (isStrictEmployee) query = query.eq('assigned_to', currentUser.id); const { data } = await query.order('timestamp', { ascending: false }); if (data) setContracts(data); };
   
   const checkTimeScope = (dateStr: string, scope: string) => {
+    if (scope === 'all') return true; // Bypass filter when all is selected
     if (!dateStr) return false;
     const date = new Date(dateStr);
     const now = new Date();
