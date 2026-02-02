@@ -23,11 +23,22 @@
     <meta name="msapplication-TileImage" content="/icon-192.png">
     <meta name="application-name" content="Asra GPS">
 
+    <!-- Phase 2: DNS Pre-fetching & Preconnecting -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://esm.sh">
+
+    <!-- Phase 2: Preloading Critical Resources -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;400;700;900&family=Lalezar&display=swap" as="style">
+    <link rel="preload" href="https://cdn.tailwindcss.com" as="script">
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" as="script">
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" as="script">
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;400;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;400;700;900&family=Lalezar&display=swap" rel="stylesheet">
     
-    <!-- Added Fonts for Professional Printing -->
-    <link href="https://fonts.googleapis.com/css2?family=Lalezar&display=swap" rel="stylesheet">
+    <!-- Optimized Font Face Declarations -->
     <style>
       @font-face {
         font-family: 'Bahij Nazanin';
@@ -45,9 +56,9 @@
       }
     </style>
 
-    <!-- PDF Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- PDF Libraries (Deferred to avoid render blocking) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 
     <style>
         body {
@@ -57,6 +68,8 @@
             padding: 0;
             overscroll-behavior-y: contain;
             -webkit-tap-highlight-color: transparent;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
         }
         
         input::placeholder { color: #cbd5e1; font-weight: normal; }
