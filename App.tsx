@@ -100,8 +100,7 @@ const triggerProfessionalPrint = async (isLandscape: boolean = false, contractId
   if (!printLayer) return;
 
   const pageUnits = Array.from(printLayer.querySelectorAll('.print-page-unit')) as HTMLElement[];
-  const createdBlobUrls: string[] = []; // Memory tracking
-
+  
   try {
     await Promise.all(pageUnits.map(async (unit) => {
       const style = window.getComputedStyle(unit);
@@ -109,7 +108,6 @@ const triggerProfessionalPrint = async (isLandscape: boolean = false, contractId
       if (bg && bg !== 'none') {
         const url = bg.replace(/url\(['"]?(.*?)['"]?\)/, '$1');
         const optimizedUrl = await getPrintOptimizedBlob(url);
-        createdBlobUrls.push(optimizedUrl);
         unit.style.backgroundImage = `url("${optimizedUrl}")`;
         await new Promise((resolve) => {
           const img = new Image();
@@ -123,12 +121,10 @@ const triggerProfessionalPrint = async (isLandscape: boolean = false, contractId
     await new Promise(resolve => setTimeout(resolve, 500));
     window.print();
     
-    // Phase 1: Clean up RAM immediately after print call
     setTimeout(() => {
-        createdBlobUrls.forEach(url => URL.revokeObjectURL(url));
         const styleEl = document.getElementById('print-orientation-style');
         if (styleEl) styleEl.remove();
-    }, 2000);
+    }, 1000);
   } catch (err) {
     console.error('Print prep failed', err);
     window.print();
@@ -457,7 +453,7 @@ const PrintLayout = ({ template, formData, activeFont }: { template: ContractTem
       {template.pages.map((page, index) => {
         const activeFields = page.fields?.filter(f => f.isActive) || []; if (activeFields.length === 0 && index > 0) return null;
         return (
-          <div key={`print-page-${index}`} className="print-page-unit" style={{ width: isLandscape ? (isMasterA4 ? '297mm' : '210mm') : (isMasterA4 ? '210mm' : '148mm'), height: isLandscape ? (isMasterA4 ? '148mm' : '148mm') : (isMasterA4 ? '297mm' : '210mm'), backgroundImage: page.showBackgroundInPrint && localBgs[page.pageNumber] ? `url(${localBgs[page.pageNumber]})` : 'none', backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat', imageRendering: 'crisp-edges' }}>
+          <div key={`print-page-${index}`} className="print-page-unit" style={{ width: isLandscape ? (isMasterA4 ? '297mm' : '210mm') : (isMasterA4 ? '210mm' : '148mm'), height: isLandscape ? (isMasterA4 ? '210mm' : '148mm') : (isMasterA4 ? '297mm' : '210mm'), backgroundImage: page.showBackgroundInPrint && localBgs[page.pageNumber] ? `url(${localBgs[page.pageNumber]})` : 'none', backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat', imageRendering: 'crisp-edges' }}>
             {activeFields.map((field) => (<div key={`field-${field.id}`} className="print-field" style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width}px`, transform: `translateY(-50%) rotate(${field.rotation}deg)`, fontSize: `${field.fontSize}px`, textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center', justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center' }}><span className="print-text-content" style={{ fontFamily: activeFont || 'Vazirmatn' }}>{formData[field.key] || ''}</span></div>))}
           </div>
         );
@@ -501,24 +497,6 @@ const CustomSelect = ({ field, value, onSelect, zoom, onClose, activeFont }: { f
   return (<div className="absolute z-[100] bg-white border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-right" style={{ width: `${field.width * zoom}px`, top: '100%', marginTop: '4px', maxHeight: '200px', overflowY: 'auto' }}>{options.map((opt, i) => (<button key={i} onClick={(e) => { e.stopPropagation(); onSelect(opt); onClose(); }} className={`w-full p-3 text-sm font-bold transition-all text-right border-b border-slate-50 last:border-0 hover:bg-blue-50 ${value === opt ? 'bg-blue-100 text-blue-700' : 'text-slate-700'}`} style={{ fontSize: `${field.fontSize * zoom}px`, fontFamily: activeFont || 'Vazirmatn' }}>{opt}</button>))}</div>);
 };
 
-// Phase 1 Optimization: Isolated rendering for fields
-const MemoizedCanvasField = React.memo(({ field, value, zoom, isActive, isDropdownOpen, onActivate, onValueChange, onKeyDown, activeFont }: any) => {
-  return (
-    <div className={`absolute flex transition-all duration-300 ${isActive ? 'z-50' : 'z-10'} cursor-pointer`} style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width * zoom}px`, height: `${(field.height || 30) * zoom}px`, transform: `translateY(-50%) rotate(${field.rotation}deg)`, display: 'flex', alignItems: 'center', justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center' }} onClick={(e) => { e.stopPropagation(); onActivate(); }}>
-      <div className={`absolute -inset-[2px] border-2 transition-all duration-300 pointer-events-none ${isActive ? 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] opacity-100' : 'border-transparent opacity-0'}`} />
-      {field.isDropdown ? (
-        <div className="w-full h-full flex items-center gap-1 overflow-hidden" style={{ justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center' }}>
-          <span className="font-bold text-slate-800 whitespace-nowrap truncate" style={{ fontSize: `${field.fontSize * zoom}px`, fontFamily: activeFont || 'Vazirmatn', textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center', lineHeight: 1, padding: 0, margin: 0 }}>{value || (field.options?.[0] || '')}</span>
-          <ChevronDown size={12 * zoom} className="text-slate-400 flex-shrink-0" />
-        </div>
-      ) : (
-        <input data-field-key={field.key} type="text" value={value} onChange={(e) => onValueChange(e.target.value)} onFocus={onActivate} onKeyDown={onKeyDown} className="w-full bg-transparent border-none outline-none font-bold text-slate-800 p-0 m-0" style={{ fontSize: `${field.fontSize * zoom}px`, fontFamily: activeFont || 'Vazirmatn', textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center', lineHeight: 1, height: '100%', padding: 0, boxSizing: 'border-box', appearance: 'none', WebkitAppearance: 'none' }} />
-      )}
-      {isDropdownOpen && field.isDropdown && (<CustomSelect field={field} value={value} onSelect={onValueChange} zoom={zoom} onClose={onActivate} activeFont={activeFont} />)}
-    </div>
-  );
-});
-
 const VisualCanvasPage = ({ page, formData, setFormData, zoom, activeFieldKey, setActiveFieldKey, activeFont, isLandscape }: { page: ContractPage, formData: Record<string, string>, setFormData: React.Dispatch<React.SetStateAction<Record<string, string>>>, zoom: number, activeFieldKey: string | null, setActiveFieldKey: (key: string | null) => void, activeFont: string, isLandscape?: boolean }) => {
   const [localBg, setLocalBg] = useState<string>(''); const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   useEffect(() => { if (page.bgImage) cacheImage(page.bgImage).then(url => setLocalBg(url)); }, [page.bgImage]);
@@ -534,22 +512,11 @@ const VisualCanvasPage = ({ page, formData, setFormData, zoom, activeFieldKey, s
         <img src={localBg} alt="Letterhead Background" className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0" style={{ imageRendering: '-webkit-optimize-contrast' }} decoding="sync" />
       )}
       {activeFields.map((field) => (
-        <MemoizedCanvasField 
-          key={field.id}
-          field={field}
-          value={formData[field.key] || ''}
-          zoom={zoom}
-          isActive={activeFieldKey === field.key}
-          isDropdownOpen={openDropdown === field.key}
-          onActivate={() => {
-              setActiveFieldKey(field.key);
-              if (field.isDropdown) setOpenDropdown(field.key);
-              else setOpenDropdown(null);
-          }}
-          onValueChange={(val: string) => setFormData(prev => ({ ...prev, [field.key]: val }))}
-          onKeyDown={(e: any) => handleKeyDown(e, field)}
-          activeFont={activeFont}
-        />
+        <div key={field.id} className={`absolute flex transition-all duration-300 ${activeFieldKey === field.key ? 'z-50' : 'z-10'} cursor-pointer`} style={{ left: `${field.x}%`, top: `${field.y}%`, width: `${field.width * zoom}px`, height: `${(field.height || 30) * zoom}px`, transform: `translateY(-50%) rotate(${field.rotation}deg)`, display: 'flex', alignItems: 'center', justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center' }} onClick={(e) => { e.stopPropagation(); setActiveFieldKey(field.key); if (field.isDropdown) setOpenDropdown(field.key); else setOpenDropdown(null); }}>
+          <div className={`absolute -inset-[2px] border-2 transition-all duration-300 pointer-events-none ${activeFieldKey === field.key ? 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] opacity-100' : 'border-transparent opacity-0'}`} />
+          {field.isDropdown ? (<div className="w-full h-full flex items-center gap-1 overflow-hidden" style={{ justifyContent: field.alignment === 'L' ? 'flex-start' : field.alignment === 'R' ? 'flex-end' : 'center' }}><span className="font-bold text-slate-800 whitespace-nowrap truncate" style={{ fontSize: `${field.fontSize * zoom}px`, fontFamily: activeFont || 'Vazirmatn', textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center', lineHeight: 1, padding: 0, margin: 0 }}>{formData[field.key] || (field.options?.[0] || '')}</span><ChevronDown size={12 * zoom} className="text-slate-400 flex-shrink-0" /></div>) : (<input data-field-key={field.key} type="text" value={formData[field.key] || ''} onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))} onFocus={() => { setActiveFieldKey(field.key); setOpenDropdown(null); }} onKeyDown={(e) => handleKeyDown(e, field)} className="w-full bg-transparent border-none outline-none font-bold text-slate-800 p-0 m-0" style={{ fontSize: `${field.fontSize * zoom}px`, fontFamily: activeFont || 'Vazirmatn', textAlign: field.alignment === 'L' ? 'left' : field.alignment === 'R' ? 'right' : 'center', lineHeight: 1, height: '100%', padding: 0, boxSizing: 'border-box', appearance: 'none', WebkitAppearance: 'none' }} />)}
+          {openDropdown === field.key && field.isDropdown && (<CustomSelect field={field} value={formData[field.key] || ''} onSelect={(val) => setFormData(p => ({ ...p, [field.key]: val }))} zoom={zoom} onClose={() => setOpenDropdown(null)} activeFont={activeFont} />)}
+        </div>
       ))}
     </div>
   );
