@@ -183,7 +183,7 @@ const Toast = () => {
 };
 
 // --- Smart Reports Logic ---
-const ReportsPanel = () => {
+const ReportsPanel = ({ template }: { template: ContractTemplate }) => {
   const [contracts, setContracts] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -237,6 +237,90 @@ const ReportsPanel = () => {
     setLoading(false);
   };
 
+  // --- Professional Excel (CSV) Export Engine ---
+  const handleExportExcel = () => {
+    if (contracts.length === 0) {
+      showToast('داده‌ای برای خروجی یافت نشد');
+      return;
+    }
+
+    // 1. Prepare dynamic field labels map
+    const fieldLabelsMap: Record<string, string> = {};
+    template.pages.forEach(p => {
+      p.fields.forEach(f => {
+        fieldLabelsMap[f.key] = f.label;
+      });
+    });
+
+    // 2. Identify all dynamic keys used in filtered contracts
+    const dynamicKeysSet = new Set<string>();
+    contracts.forEach(c => {
+      if (c.form_data) {
+        Object.keys(c.form_data).forEach(k => dynamicKeysSet.add(k));
+      }
+    });
+    const dynamicKeys = Array.from(dynamicKeysSet);
+
+    // 3. Define headers with duplicate label protection
+    const headerCounts: Record<string, number> = {};
+    const headers = [
+      'ردیف',
+      'تاریخ ثبت',
+      'نام مشتری',
+      'نام پدر',
+      'شماره پلاک',
+      'شماره تماس',
+      'نوع خدمات',
+      'کارمند ثبت‌کننده',
+      ...dynamicKeys.map(k => {
+        const baseLabel = fieldLabelsMap[k] || 'فیلد پویا';
+        headerCounts[baseLabel] = (headerCounts[baseLabel] || 0) + 1;
+        // If label is duplicate, append the field key to distinguish columns
+        return headerCounts[baseLabel] > 1 ? `${baseLabel} (${k.replace('f_', '')})` : baseLabel;
+      })
+    ];
+
+    // 4. Map rows with "Force Text Formula" to preserve zeros and large numbers
+    const rows = contracts.map((c, index) => {
+      const client = clients.find(cl => cl.id === c.client_id);
+      const employee = employees.find(e => e.id === c.assigned_to);
+      
+      const rowData = [
+        index + 1,
+        new Date(c.timestamp).toLocaleDateString('fa-IR'),
+        c.client_name,
+        client?.father_name || client?.fatherName || '---',
+        `="${client?.tazkira || '---'}"`, // Force text to avoid scientific notation for plates
+        `="${client?.phone || '---'}"`,   // Force text to avoid scientific notation for phones
+        c.is_extended ? 'تمدیدی' : 'اصلی',
+        employee?.username || 'مدیر سیستم'
+      ];
+
+      // Dynamic form fields
+      dynamicKeys.forEach(k => {
+        const val = c.form_data?.[k] || '';
+        // Wrap every dynamic value in a text formula for Excel safety
+        rowData.push(`="${val.toString().replace(/"/g, '""')}"`);
+      });
+
+      // Escape quotes for CSV compliance (outer wrap)
+      return rowData.map(val => `"${val.toString().replace(/"/g, '""')}"`).join(',');
+    });
+
+    // 5. Generate file with BOM for Persian support in Excel
+    const csvContent = "\uFEFF" + headers.join(',') + '\n' + rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const todayStr = new Date().toLocaleDateString('fa-IR').replace(/\//g, '-');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `گزارش_اسراء_${todayStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('فایل اکسل با موفقیت تولید شد');
+  };
+
   const stats = useMemo(() => {
     const mainCount = contracts.filter(c => !c.is_extended).length;
     const extCount = contracts.filter(c => c.is_extended).length;
@@ -261,6 +345,15 @@ const ReportsPanel = () => {
               </div>
             )}
           </div>
+          
+          <button 
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 px-6 py-3.5 rounded-[24px] bg-emerald-600 text-white font-black text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100"
+          >
+            <Download size={16} />
+            <span>خروجی اکسل</span>
+          </button>
+
           <div className="bg-white p-2 rounded-[28px] shadow-sm border border-slate-100 flex items-center gap-1">
             {[{ id: 'today', label: 'امروز' }, { id: 'week', label: 'هفته' }, { id: 'month', label: 'ماه' }, { id: 'year', label: 'سال' }, { id: 'custom', label: 'سفارشی' }].map(f => (<button key={f.id} onClick={() => setQuickFilter(f.id as any)} className={`px-5 py-2.5 rounded-2xl text-xs font-black transition-all ${quickFilter === f.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>{f.label}</button>))}
           </div>
@@ -1167,7 +1260,7 @@ export default function App() {
           {activeTab === 'settings' && <SettingsPanel template={template} setTemplate={setTemplate} userPermissions={userPermissions} currentUser={currentUser} />}
           {activeTab === 'archive' && (<ArchivePanel onEdit={(c) => { setEditingContract(c); setActiveTab('workspace'); }} perms={userPermissions} template={template} currentUser={currentUser} activeFont={activeFont} />)}
           {activeTab === 'accounting' && <AccountingPanel perms={userPermissions} currentUser={currentUser} />}
-          {activeTab === 'reports' && <ReportsPanel />}
+          {activeTab === 'reports' && <ReportsPanel template={template} />}
         </div>
       </main>
       <PrintLayout template={template} formData={formData} activeFont={activeFont} />
